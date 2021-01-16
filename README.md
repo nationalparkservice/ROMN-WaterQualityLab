@@ -6,5 +6,6 @@ Scripts processes all deliverables in a defined directory to one complied file. 
 Logfiles define all the fields that where processed, as well as undefined fields, and expected fields that where not present (i.e. Commission and Omission fields).
 
 WaterQuality_TestAmerica_Preprocessing.ipynb - Test America
+
 WaterQuality_OSU_Preprocessing.ipynb - Oregon State University CCAL
 
