@@ -1,0 +1,533 @@
+---
+title: "Comparing the Output of Historical and Current Methods for Creating the EQuIS EDD"
+output: html_document
+date: "January 29, 2025"
+---
+
+# Purpose
+
+The purpose of this script is to use our current methods for creating EDDs from CCAL deliverables to recreate historical EDDs, and to compare these new versions to what we originally created using the VBA routine in Access.
+Note that the EDDs we recreate here are not fully complete; our streamlined EDD creation routine still requires some degree of manual review as indicated at relevant points throughout this document.
+
+# Setup
+
+First, we load the packages, functions, and data required to run this script.
+
+```{r Download and load packages}
+# Load imdccal package
+# Steps for installation are commented out
+# install.packages("remotes")
+# library(remotes) # to facilitate downloading packages from github
+# remotes::install_github("nationalparkservice/imd-ccal")
+library(imdccal) # nps package for formatting CCAL data
+
+# Load all other packages
+library(tidyverse) # data wrangling
+library(readxl) # reading excel files
+library(lubridate) # working with dates
+library(openxlsx) # exporting excel files
+library(here) # relative file paths
+library(fpCompare) # comparing floating point numbers
+library(DBI) # working with databases
+library(odbc) # working with databases
+
+# Load functions from our two other scripts
+source("test_edd.R")
+source("format_edd.R")
+
+# Define limits table
+limits <- readRDS(here('data/raw/limits.rds'))
+```
+
+# Create 2019 EDD
+
+In this section we create an EDD for the CCAL data from 2019.
+It will be useful to compare these results to our historical results, since the last complete QC of ROMN's water chemistry data was on pre-2020 data.
+By default we store the EDD in the R environment, but you may uncomment code below to write it to an Excel file instead.
+
+```{r}
+# Create EDD and store in environment
+edd_2019 <- format_edd_ccal(ccal_file_paths = here("data/raw/ROMN_103119.xlsx"),
+                       db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
+                       pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"),
+                       limits = limits)
+
+# Write the EDD from R environment to file
+# write_data(all_data = edd_2019,
+#            format = "xlsx",
+#            destination_folder = here("data/output"),
+#            overwrite = TRUE,
+#            suffix = "_edd",
+#            num_tables = 4)
+
+# Alternatively create EDD and write to excel file in one step
+# write_edd(ccal_file_paths = here("data/raw/ROMN_103119.xlsx"),
+#           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
+#           pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"),
+#           format = "xlsx",
+#           destination_folder = here("data/output"),
+#           overwrite = TRUE,
+#           limits = limits)
+```
+
+Here, we create a single table that contains enough information to understand the results of the QC process without inspecting the full 2019 EDD across multiple tables.
+Then we filter for any results that have comments from CCAL that require manual review.
+If we were actually creating and submitting this EDD, the ecologist would need to review the comments in the Source_Flags column to determine whether additional flags are needed. 
+
+```{r}
+# Create data that is easier to review
+ROMN_103119_edd_snapshot <-  edd_2019$ROMN_103119.xlsx$Results %>%
+  left_join(edd_2019$ROMN_103119.xlsx$Activities, by = "Activity_ID") %>%
+  select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Detection_Condition,
+         Result_Qualifier, Method_Detection_Limit, Lower_Quantification_Limit, Source_Flags, Result_Comment)
+
+# Optionally, write data to excel file
+# write.xlsx(ROMN_103119_edd_snapshot, here("data/output/ROMN_103119_edd_snapshot.xlsx"))
+
+# Apply flags manually based on Source_Flags
+ROMN_103119_edd_snapshot %>%
+  filter(!is.na(Source_Flags))
+```
+
+Finally, we display any other comments about the data that have not been automatically attached to relevant rows.
+Again, if we were actually submitting this EDD the ecologist may manually apply flags based on these comments.
+
+```{r}
+# Apply flags manually based on these descriptions
+# Sometimes these comments have no lab numbers associated with them so I did not attempt to automate their inclusion in Source_Flags
+# If output is NA, there are no other comments from CCAL to consider
+getCCALData(here("data/raw/ROMN_103119.xlsx"))$ROMN_103119.xlsx$metadata$quest_results_comments
+```
+
+# Compare our new and historical EDDs for 2019 data
+
+In this section, we compare the output from the EDD we just created for our 2019 data to the EDD that was created with our older process.
+
+First of all, in the old EDD, it appears there were a few manual edits to dates, which in turn led to different values for Activity_ID.
+For the purposes of comparing results, we edit the Activity_ID in our new data to match the old data.
+Another manual edit seems to have swapped the Activity_ID of two different sampling events, so we also make that edit for the purposes of comparison.
+
+```{r}
+# Adjust some things manually so that our rows match up with the old EDD
+# Some dates were different in old EDD, some data was swapped for some reason
+edd_2019$ROMN_103119.xlsx$Activities <- edd_2019$ROMN_103119.xlsx$Activities %>%
+  mutate(Activity_ID = case_when(Activity_ID == "ROMN_GLAC_S05_20190821_C_Water_1" ~ "ROMN_GLAC_S05_20190822_C_Water_0", # date
+                                 Activity_ID == "ROMN_LIBI_S01_20190617_C_Water_0" ~ "ROMN_LIBI_S01_20190620_C_Water_0", # date
+                                 Activity_ID == "ROMN_ROMO_S01L_20190508_C_Water_0" ~ "ROMN_ROMO_S01L_20190506_C_Water_0", # date
+                                 Activity_ID == "ROMN_ROMO_S01U_20190508_C_Water_0" ~ "ROMN_ROMO_S01U_20190506_C_Water_0", # date
+                                 Activity_ID == "ROMN_ROMO_S02_20190508_C_Water_0" ~ "ROMN_ROMO_S02_20190507_C_Water_0", # date
+                                 Activity_ID == "ROMN_ROMO_S03_20190508_C_Water_0" ~ "ROMN_ROMO_S03_20190507_C_Water_0", # date
+                                 Activity_ID == "ROMN_GLAC_022_20190822_C_Water_0" ~ "ROMN_GLAC_022_20190930_C_Water_0", # swapped
+                                 Activity_ID == "ROMN_GLAC_022_20190930_C_Water_0" ~ "ROMN_GLAC_022_20190822_C_Water_0", # swapped
+                                 TRUE ~ Activity_ID))
+
+edd_2019$ROMN_103119.xlsx$Results <- edd_2019$ROMN_103119.xlsx$Results %>%
+  mutate(Activity_ID = case_when(Activity_ID == "ROMN_GLAC_S05_20190821_C_Water_1" ~ "ROMN_GLAC_S05_20190822_C_Water_0", # date
+                                 Activity_ID == "ROMN_LIBI_S01_20190617_C_Water_0" ~ "ROMN_LIBI_S01_20190620_C_Water_0", # date
+                                 Activity_ID == "ROMN_ROMO_S01L_20190508_C_Water_0" ~ "ROMN_ROMO_S01L_20190506_C_Water_0", # date
+                                 Activity_ID == "ROMN_ROMO_S01U_20190508_C_Water_0" ~ "ROMN_ROMO_S01U_20190506_C_Water_0", # date
+                                 Activity_ID == "ROMN_ROMO_S02_20190508_C_Water_0" ~ "ROMN_ROMO_S02_20190507_C_Water_0", # date
+                                 Activity_ID == "ROMN_ROMO_S03_20190508_C_Water_0" ~ "ROMN_ROMO_S03_20190507_C_Water_0", # date
+                                 Activity_ID == "ROMN_GLAC_022_20190822_C_Water_0" ~ "ROMN_GLAC_022_20190930_C_Water_0", # swapped
+                                 Activity_ID == "ROMN_GLAC_022_20190930_C_Water_0" ~ "ROMN_GLAC_022_20190822_C_Water_0", # swapped
+                                 TRUE ~ Activity_ID))
+```
+
+Next, we compare our results to our historical EDD.
+We make that comparison by calling the `compare_edd()` function (defined in `test_edd.R`).
+
+As input, this function takes (1) an excel file containing the old EDD and (2) an R object of the EDD generated earlier in this R Markdown.
+As output, the function first prints some text identifying any differences between the 4 tables (Projects, Locations, Activities, and Results) in the EDDs.
+If a table matches perfectly, the output will state "Identical tables". 
+If a table does not match perfectly, the output will state the names of any columns with disagreements, as well as the number of disagreements in that column.
+Finally, for every column with disagreement, a data.frame is printed out which displays the disagreements between the old and new EDD, and the indices where those disagreements occur.
+These data.frames are printed out in the order in which they are reported.
+
+Additionally, `compare_edd` returns a list of 4 lists, entitled projects, locations, activities, and results.
+Each of these lists contains 3 tables called test, old, and new.
+These 3 tables all have the same shape.
+Old contains the data from the historical EDD, new contains the data from the new EDD, and test is a boolean table where TRUE indicates disagreement between old and new.
+These 3 tables have all been sorted in the same manner, so indices reported by `compare_edd()` can easily be used to inspect disagreements between the EDDs more closely.
+
+```{r}
+# Compare historical and new EDD
+compare_103119 <- compare_edd(here("data/EDD_examples/ROMN_WQ_EDD_20200624.xlsx"), edd_2019$ROMN_103119.xlsx)
+```
+
+Below is my summary of the differences between the EDDs.
+
+- Locations: Latitude (9), Longitude (9) , HUC8_Code (1), HUC12_Code (1): minor changes that I'm not worried about, our database has probably seen updates to these fields since 2019.
+
+- Activities: 
+    - Activity_Type (3): we are now correctly recording when something is a field blank or field dup rather than saying all are sample-routine
+    - Activity_Start_Date (8): these 6 differences are related to the 8 Activity_ID's I had to adjust before making the comparison
+    - Activity_Comment (37): this is just here because ROMN_SEI_in_EQuIS.xlsx recorded NA as "NULL"
+
+- Results:
+    - Result_Detection_Condition (15): see code below. 13 of these differences occur because we no longer change the Result_Detection_Condition to Not Detected when the NFNSU flag is raised. The other two erroneously were set to Not Detected despite concentrations greater than Alkalinity's MDL of 0.2.
+    - Result_Text (55): see code below. All differences are due to different values of alkalinity or the same issues identified with Result_Detection_Conditino. I'm not sure why the old EDD has different alkalinity values as ours appear to match those in the raw data.
+    - Result_Qualifier (180): see code below. All discrepancies are due to differences in methodologies, mistakes in old EDD or old CCAL deliverable, or the absence of manual assignment of "H" flag in new EDD. 
+    - Result_Status (630): in old data, all are "Accepted" rather than "Pre-Cert"
+    - Result_Type (89): in new data, we set this to "Estimated" every time we raised the "J-R" flag
+    - Result_Comment (289): we changed the structure of this field
+    - Lower_Quantification_Limit (90): in new code, we always include this instead of sometimes leaving it as NA
+    - Analytical_Method_ID (180): these have simply changed and we are using the current version
+    - Analysis_Start_Date (630): new code uses analysis start date rather than activity start date
+    - Analysis_Start_Time (630): new code sets to NA rather than saying everything started at midnight
+    - Lab_Reported_Result (141): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
+    - Reportable_Result (137): new code always sets this to 'Y'
+    - Source_Flags (84): we changed the structure of this field
+
+In the next two code chunks, we print out two tables that can be used to inspect the differences in **Result_Detection_Condition** more carefully.
+
+```{r}
+bind_cols(old_qualifier = compare_103119$results$old$Result_Qualifier,
+          old_detection_condition = compare_103119$results$old$Result_Detection_Condition,
+          new_qualifier = compare_103119$results$new$Result_Qualifier,
+          new_detection_condition = compare_103119$results$new$Result_Detection_Condition) %>%
+  mutate(row_num = row_number()) %>%
+  filter(old_detection_condition != new_detection_condition | 
+           xor(is.na(old_detection_condition), is.na(new_detection_condition)))
+```
+
+```{r}
+compare_103119$results$new %>%
+  select(Activity_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier) %>%
+  filter(row_number() %in% c(239, 533))
+```
+
+In the next two code chunks, we print out two tables that can be used to inspect the differences in **Result_Text** more carefully.
+
+```{r}
+# Extract indices of disagreement for Result_Text
+result_text_differences <- bind_cols(old = compare_103119$results$old$Result_Text, new = compare_103119$results$new$Result_Text) %>%
+  mutate(row_num = row_number()) %>%
+  filter(old != new | xor(is.na(old), is.na(new))) %>%
+  pull(row_num)
+
+# Review data in old EDD
+compare_103119$results$old %>%
+  mutate(row_num = row_number()) %>%
+  filter(row_num %in% result_text_differences) %>%
+  select(row_num, Lab_Batch_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier)
+```
+
+```{r}
+# Review data in new EDD
+compare_103119$results$new %>%
+   mutate(row_num = row_number()) %>%
+  filter(row_num %in%  result_text_differences) %>%
+  select(row_num, Lab_Batch_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier)
+```
+
+In the next two code chunks, we print out two tables that can be used to inspect the differences in **Result_Qualifier** more carefully.
+
+```{r}
+# Extract indices of disagreement for Result_Qualifier
+result_qualifier_differences <- bind_cols(old = compare_103119$results$old$Result_Qualifier, new = compare_103119$results$new$Result_Qualifier) %>%
+  mutate(row_num = row_number()) %>%
+  filter(old != new | xor(is.na(old), is.na(new))) %>%
+  pull(row_num)
+
+# Review data in old EDD
+compare_103119$results$old %>%
+  filter(row_number() %in% result_qualifier_differences) %>%
+  select(Lab_Batch_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier)
+```
+
+```{r}
+# Review data in new EDD
+compare_103119$results$new %>%
+  filter(row_number() %in% result_qualifier_differences) %>%
+  select(Lab_Batch_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier)
+```
+
+# Create EDDs 2020-2023
+
+In this section we create EDDs for a selection of CCAL deliverables from 2020-2023.
+The historical EDDs for these deliverables have not yet been fully QC'd.
+
+```{r create EDDs}
+# Create EDDs and store in environment
+edds <- format_edd_ccal(ccal_file_paths = c(here("data/raw/ROMN_101823.xlsx"),
+                     here("data/raw/ROMN_102920.xlsx"),
+                     here("data/raw/ROMN_081021.xlsx"),
+                     here("data/raw/ROMN_102221.xlsx"),
+                     here("data/raw/ROMN_100620.xlsx")),
+                   db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
+                   pre_2020 = FALSE,
+                   limits = limits)
+
+# Write the EDD to file
+# write_data(all_data = edds,
+#            format = "xlsx",
+#            destination_folder = here("data/output"),
+#            overwrite = TRUE,
+#            suffix = "_edd",
+#            num_tables = 4)
+
+# Alternatively create EDDs and write to excel files in one step
+# write_edd(ccal_file_paths = c(here("data/raw/ROMN_101823.xlsx"),
+#                      here("data/raw/ROMN_102920.xlsx"),
+#                      here("data/raw/ROMN_081021.xlsx"),
+#                      here("data/raw/ROMN_102221.xlsx"),
+#                      here("data/raw/ROMN_100620.xlsx")),
+#           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
+#           pre_2020 = FALSE,
+#           format = "xlsx",
+#           destination_folder = here("data/output"),
+#           overwrite = TRUE,
+#           limits = limits)
+```
+
+Here, we create a single table for each EDD that contains enough information to understand the results of the QC process without inspecting the full EDD across multiple tables.
+Then we filter for any results that have comments from CCAL that require manual review.
+If we were actually creating and submitting this EDD, the ecologist would need to review the comments in the Source_Flags column to determine whether additional flags are needed. 
+For example, we might apply the JCW flag to the observations with broken bottles mentioned in ROMN_101823.xlsx.
+
+```{r}
+# Create data that is easier to review
+edd_snapshots <- lapply(edds, function(edd) {
+  edd$Results %>%
+    left_join(edd$Activities, by = "Activity_ID") %>%
+    select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, 
+           Filtered_Fraction, Result_Text, Result_Detection_Condition, Result_Qualifier, 
+           Method_Detection_Limit, Lower_Quantification_Limit, Source_Flags, Result_Comment)
+})
+
+names(edd_snapshots) <- names(edds)
+
+# Optionally, write the EDD snapshot to a file
+# lapply(1:length(edd_snapshots), function(i) {
+#   write.xlsx(edd_snapshots[[i]],
+#              here("data", "output",
+#                   paste0(str_extract(names(edd_snapshots)[[i]], "^.*(?=\\.)"), "_edd_snapshot.xlsx")))
+# })
+
+# The ecologist will manually apply flags based on Source_Flags
+lapply(edd_snapshots, function(snapshot) {
+  snapshot %>%
+    filter(!is.na(Source_Flags))
+})
+```
+
+And here are any textual flags from CCAL that have not automatically been matched with rows in the EDD.
+
+```{r}
+# Eventually, the ecologist will manually apply flags based on these descriptions
+# Sometimes these comments have no lab numbers associated with them so I did not attempt to automate their inclusion in Source_Flags
+# If output is NA, there are no other comments from CCAL to consider
+getCCALData(c(here("data/raw/ROMN_101823.xlsx"),
+              here("data/raw/ROMN_102920.xlsx"),
+              here("data/raw/ROMN_081021.xlsx"),
+              here("data/raw/ROMN_102221.xlsx"),
+              here("data/raw/ROMN_100620.xlsx"))) %>%
+  lapply(function(deliverable) {
+    deliverable$metadata$quest_results_comments
+  })
+```
+
+# Compare EDD 102920
+
+Here we compare the old and new EDDs produced for a CCAL deliverable from 2020.
+
+```{r}
+compare_102920 <- compare_edd(here("data/EDD_examples/ROMN_WQ_EDD_102920_20210416.xlsx"), edds$ROMN_102920.xlsx)
+```
+
+Here is my summary of the differences between the EDDs.
+
+- Results:
+    - Result_Qualifier (24): one instance where the old EDD raised the NFNSI flag for orthophosphate but the new EDD raises no flag. It looks like this is because total dissolved phosphorus and total phosphorus were below the MDL and our new process does not make NFNSI or NFNSU comparisons between any analytes below the MDL. All others are the KRMDL flag which we no longer record as a flag.
+    - Result_Type (14): in the new EDD, we set the `Result_Type` to "Estimated" when the "J-R" flag is raised.
+    - Result_Comment (42): we changed the structure of this field
+    - Lower_Quantification_Limit (14): in new code, we always include this instead of sometimes leaving it as NA
+    - Analytical_Method_ID (28): these have changed and we are using the current version
+    - Analysis_Start_Date (98): new code uses analysis start date rather than activity start date
+    - Analysis_Start_Time (98): new code sets to NA rather than saying everything started at midnight 
+    - Lab_Reported_Result (21): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
+    - Reportable_Result (23): new code always sets this to 'Y'
+    - Source_Flags (42): we changed the structure of this field
+  
+# Compare EDD 100620
+
+Here we compare the old and new EDDs produced for another CCAL deliverable from 2020.
+
+First, there was an issue in getting the two EDDs to talk to each other due to what appears to be a typo in a location name and a typo in the date in the deliverable from CCAL, so I address that here in order to run my comparison.
+
+```{r}
+# Location_ID issue: in the deliverable from CCAL, one sample has its site listed as ROMO_S01, 
+# but that doesn't exist in the database! There is a ROMO_S01L and ROMO_S01U... and ROMO_S01L
+# had already appeared. By cross-referencing the lab number of the sample with the site listed
+# as ROMO_S01 with the lab number in the old EDD, I can see that this site was intended to be 
+# ROMO_S01U so I manually adjusted it (in the excel file).
+# Ideally, we would have some QC built-in for this purpose.
+
+# Another typo in the CCAL deliverable: in the Site ID column they wrote 20NPS0000 655C2.F_Z instead of 20NPS0000655 C2.F_Z for one observation, which led to one observation having a failed join, thus not being able to bring over the correct information for a few columns. I manually adjusted this in their deliverable and it works fine...
+
+# There was also what appears to be a manually adjusted date in the historical EDD so I'm changing my Activity_ID to match his in order to be able to compare our results
+
+edds$ROMN_100620.xlsx$Activities <- edds$ROMN_100620.xlsx$Activities %>%
+  mutate(Activity_ID = if_else(Activity_ID == "ROMN_ROMO_S02_20200807_C_Water_0", "ROMN_ROMO_S02_20200817_C_WATER_0", Activity_ID))
+
+edds$ROMN_100620.xlsx$Results <- edds$ROMN_100620.xlsx$Results %>%
+  mutate(Activity_ID = if_else(Activity_ID == "ROMN_ROMO_S02_20200807_C_Water_0", "ROMN_ROMO_S02_20200817_C_WATER_0", Activity_ID))
+```
+
+Now we can compare the EDDs.
+
+```{r}
+compare_100620 <- compare_edd(here("data/EDD_examples/ROMN_WQ_EDD_102920_20210416.xlsx"), edds$ROMN_100620.xlsx)
+```
+
+Summary/explanation of the differences:
+
+- Locations: Latitude (2), Longitude (2): minor changes, probably due to updates to these coordinates between 2020 and now. 
+
+- Activities: 
+    - Activity_Type (1): we are now correctly recording when something is a field blank or field dup rather than saying all are sample-routine
+    - Activity_Start_Date (1): the one difference is the date that I noticed was off earlier. I modified the Activity_ID column in order to get the comparison function to work but I didn't change this column.
+
+- Results:
+    - Result_Detection_Condition (5): these differences are due to the NFNSU flag no longer changing results to Detected Not Quantified
+    - Result_Text (5): these differences are due to the NFNSU flag no longer changing results to NA
+    - Result_Qualifier (83): see code below. All discrepancies are due to differences in methodologies.
+    - Result_Type (39): in new data, we set this to "Estimated" every time we raised the "J-R" flag
+    - Result_Comment (132): we changed the structure of this field
+    - Lower_Quantification_Limit (39): in new code, we always include this instead of sometimes leaving it as NA
+    - Analytical_Method_ID (100): these have simply changed and we are using the current version
+    - Analysis_Start_Date (350): new code uses analysis start date rather than activity start date
+    - Analysis_Start_Time (350): new code sets to NA rather than saying everything started at midnight
+    - Lab_Reported_Result (59): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
+    - Reportable_Result (75): new code always sets this to 'Y'
+    - Source_Flags (14): we changed the structure of this field
+
+In the next two code chunks, we print out two tables that can be used to inspect the differences in **Result_Qualifier** more carefully.
+The differences appear to be due to differences in the way we are assigning NFNSU/NFNSI (our threshold for NFNSU is lower and we don't consider comparisons with inorganic nitrogen), the addition of the SUS flag for replicates, and the removal of the KRMDL flag.
+
+```{r}
+# Extract indices of disagreement for Result_Qualifier
+result_qualifier_differences_100620 <- bind_cols(old = compare_100620$results$old$Result_Qualifier, new = compare_100620$results$new$Result_Qualifier) %>%
+  mutate(row_num = row_number()) %>%
+  filter(old != new | xor(is.na(old), is.na(new))) %>%
+  pull(row_num)
+
+# Review data in old EDD
+compare_100620$results$old %>%
+  filter(row_number() %in% result_qualifier_differences_100620) %>%
+  select(Lab_Batch_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier)
+```
+
+```{r}
+# Review data in new EDD
+compare_100620$results$new %>%
+  filter(row_number() %in% result_qualifier_differences_100620) %>%
+  select(Lab_Batch_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier)
+```
+
+# Compare EDD 081021
+
+Here we compare the old and new EDDs produced for a CCAL deliverable from 2021.
+
+```{r}
+compare_081021 <- compare_edd(here("data/EDD_examples/ROMN_WQ_EDD_OSUCCAL_20220623.xlsx"), edds$ROMN_081021.xlsx)
+```
+
+Summary/explanation of the differences:
+
+- Projects: Project_Start_Date (1): same date, different format
+
+- Locations: Latitude (2), Longitude (2): minor changes, probably due to updates to these coordinates between 2021 and now. 
+
+- Activities: 
+    - Activity_Start_Date (16): all 16 differences due to inclusion or exclusion of "/", dates are actually the same
+    - Activity_Comment (1): the one difference appears to be due to incomplete sentence at the end of the comment in the old EDD.
+
+- Results:
+    - Result_Detection_Condition (9): these differences are due to the NFNSU flag no longer changing results to Detected Not Quantified
+    - Result_Text (9): these differences are due to the NFNSU flag no longer changing results to NA
+    - Result_Qualifier (22): 21 differences because we do not include the KRMDL flag anymore. 1 difference may be due to a mistake on the behalf of CCAL. Their textual comment indicates that an observation is within precision limits when in reality it is not. Also our method is different from theirs for the NFNSU/NFNSI flag anyway.
+    - Result_Type (14): in new data, we set this to "Estimated" every time we raised the "J-R" flag
+    - Result_Comment (47): we changed the structure of this field
+    - Lower_Quantification_Limit (14): in new code, we always include this instead of sometimes leaving it as NA
+    - Analytical_Method_ID (64): these have simply changed and we are using the current version
+    - Analysis_Start_Date (224): new code uses analysis start date rather than activity start date
+    - Analysis_Start_Time (224): new code sets to NA rather than saying everything started at midnight
+    - Lab_Reported_Result (20): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
+    - Reportable_Result (30): new code always sets this to 'Y'
+    - Source_Flags (28): we changed the structure of this field
+    
+# Compare EDD 102221
+
+Here we compare the old and new EDDs produced for another CCAL deliverable from 2021.
+
+First, there was an issue in getting the two EDDs to talk to each other due to some dates that seem to have been manually adjusted.
+I change a few Activity_IDs in new deliverable to match the old one in order to compare the EDDs.
+
+```{r}
+# Manually adjust Activity_ID to match old EDD
+edds$ROMN_102221.xlsx$Activities <- edds$ROMN_102221.xlsx$Activities %>%
+  mutate(Activity_ID = case_when(Activity_ID == "ROMN_GRKO_S01_20210803_C_Water_0" ~ "ROMN_GRKO_S01_20210802_C_WATER_0",
+                                 Activity_ID == "ROMN_GRKO_S01_20210803_C_Water_1" ~ "ROMN_GRKO_S01_20210802_C_WATER_1",
+                                 Activity_ID == "ROMN_LIBI_S01_20210922_C_Water_0" ~ "ROMN_LIBI_S01_20210923_C_WATER_0",
+                                 Activity_ID == "ROMN_ROMO_S01L_20211005_C_Water_0" ~ "ROMN_ROMO_S01L_20211007_C_WATER_0",
+                                 TRUE ~ Activity_ID))
+
+edds$ROMN_102221.xlsx$Results <- edds$ROMN_102221.xlsx$Results %>%
+  mutate(Activity_ID = case_when(Activity_ID == "ROMN_GRKO_S01_20210803_C_Water_0" ~ "ROMN_GRKO_S01_20210802_C_WATER_0",
+                                 Activity_ID == "ROMN_GRKO_S01_20210803_C_Water_1" ~ "ROMN_GRKO_S01_20210802_C_WATER_1",
+                                 Activity_ID == "ROMN_LIBI_S01_20210922_C_Water_0" ~ "ROMN_LIBI_S01_20210923_C_WATER_0",
+                                 Activity_ID == "ROMN_ROMO_S01L_20211005_C_Water_0" ~ "ROMN_ROMO_S01L_20211007_C_WATER_0",
+                                 TRUE ~ Activity_ID))
+```
+
+Now we compare the EDDs.
+
+```{r}
+compare_102221 <- compare_edd(here("data/EDD_examples/ROMN_WQ_EDD_OSUCCAL_20220623.xlsx"), edds$ROMN_102221.xlsx)
+```
+
+Summary/explanation of the differences:
+
+- Projects: Project_Start_Date (1): same date, different format
+
+- Locations: Latitude (2), Longitude (2): minor changes, probably due to updates to these coordinates between 2021 and now. 
+
+- Activities: 
+    - Activity_Type (3): we are now correctly recording when something is a field blank or field dup rather than saying all are sample-routine
+    - Activity_Start_Date (31):  31 differences, 27 of which are due to inclusion or exclusion of "/". The other 4 have this difference and the dates are actually different; these are the observations where I manually corrected the Activity_ID column in order to get my comparison function to work.
+    - Activity_Comment (2): the differences appear to be due to incomplete sentences at the end of the comments in the old EDD.
+    
+- Results:
+    - Result_Qualifier (115): see code below. All discrepancies are due to differences in methodologies.
+    - Result_Type (50): in new data, we set this to "Estimated" every time we raised the "J-R" flag
+    - Result_Comment (168): we changed the structure of this field
+    - Lower_Quantification_Limit (50): in new code, we always include this instead of sometimes leaving it as NA
+    - Analytical_Method_ID (124): these have changed and we are using the current version
+    - Analysis_Start_Date (434): new code uses analysis start date rather than activity start date
+    - Analysis_Start_Time (434): new code sets to NA rather than saying everything started at midnight
+    - Lab_Reported_Result (74): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
+    - Reportable_Result (100): new code always sets this to 'Y'
+    - Source_Flags (14): we changed the structure of this field
+
+In the next two code chunks, we print out two tables that can be used to inspect the differences in **Result_Qualifier** more carefully.
+
+```{r}
+# Extract indices of disagreement for Result_Qualifier
+result_qualifier_differences_102221 <- bind_cols(old = compare_102221$results$old$Result_Qualifier, new = compare_102221$results$new$Result_Qualifier) %>%
+  mutate(row_num = row_number()) %>%
+  filter(old != new | xor(is.na(old), is.na(new))) %>%
+  pull(row_num)
+
+# Review data in old EDD
+compare_102221$results$old %>%
+  filter(row_number() %in% result_qualifier_differences_102221) %>%
+  select(Lab_Batch_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier)
+```
+
+```{r}
+# Review data in new EDD
+compare_102221$results$new %>%
+  filter(row_number() %in% result_qualifier_differences_102221) %>%
+  select(Lab_Batch_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier)
+```

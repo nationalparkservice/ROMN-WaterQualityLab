@@ -1,0 +1,46 @@
+---
+title: "Additional Processing for Analysis"
+output: html_document
+date: "January 20, 2025"
+---
+
+# Purpose
+
+This script exists because the data processing required for publishing our data is different from the processing required for ROMN's analyses.
+This work is probably incomplete, but hopefully it's a good start on any additional processing of water chemistry data from the EDD/WQP format into the format used for analysis.
+
+# Setup
+
+First we load the required packages, functions, and data.
+For now, this code loads the activities and results tables from a saved EDD, but ideally we would run this on data queried from WQP.
+
+```{r packages, functions, and data}
+# Packages
+library(tidyverse) # data wrangling
+library(readxl) # reading excel files
+library(here) # relative file paths
+
+# Functions
+source("format_edd.R")
+
+# Data
+activities <- read_excel(here("data/output/ROMN_101823_edd.xlsx"), sheet = "Activities")
+results <- read_excel(here("data/output/ROMN_101823_edd.xlsx"), sheet = "Results")
+```
+
+# Data Processing
+
+Currently, the code repository includes one additional function to help prepare water quality data for analysis.
+This function, called `censor_for_analysis()`, accomplishes the following:
+
+- When a field blank has a detected concentration, `censor_for_analysis()` changes the corresponding environmental sample's Result_Detection_Condition to "Not Detected" if the environmental sample's concentration is less than twice the blank's and "Detected Not Quantified" if it is 2-5 times the blank's.
+- It sets Result_Detection_Condition to "Detected Not Quantified" for observations with the "NFNSU" flag, which occurs when a dissolved fraction exceeds the concentration of its corresponding total fraction by more than the total fraction's MDL.
+- It changes Result_Text to NA for any observations where the Result_Detection_Condition is not "Detected And Quantified" (accounts for all cases above).
+
+```{r}
+# Run function to change detection conditions & censor data
+updated_results <- censor_for_analysis(results, activities)
+
+# Inspect data 
+updated_results
+```

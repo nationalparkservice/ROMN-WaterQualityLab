@@ -1,0 +1,144 @@
+---
+title: "CCAL Processing Template"
+output: html_document
+date: "January 29, 2025"
+---
+
+# Purpose
+
+This script serves as a guide for creating an EQuIS Electronic Data Deliverable (EDD) from an Excel spreadsheet provided by CCAL.
+To use this template, make a copy of this file in the code directory of the water quality repository, replace the constants in the setup section, and press run!
+Much of the process is automated, but after running the script you will need to manually review certain pieces as indicated later in this document.
+
+# Setup
+
+First, we define the constants that our code will refer to throughout this script.
+Specifically, please supply the name of your preferred copy of the database, the relevant CCAL deliverable(s), and the limits table, and double check that they are in the appropriate file directories.
+
+If processing a new year of data, you may need to revise the EndDate column of the limits table.
+This is also a good time to confirm whether the detection limits have remained the same or changed and update the table as appropriate.
+We maintain a ROMN version of the limits table, but the instructions in the imdccal package (https://github.com/nationalparkservice/imd-ccal) are useful for understanding the table's usage and purpose.
+
+```{r constants}
+db_filename <- "SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb" # must be in data/databases
+ccal_deliverable_filename <- "ROMN_070224.xlsx" # must be in data/raw. May supply a vector of multiple file names if desired
+limits_filename <- "limits.rds" # must be in data/raw
+```
+
+Now we load the packages, functions, and data required to run the processing code.
+All packages except for `imdccal` are available on CRAN and can be downloaded with the `install.packages()` function.
+The `imdccal` package is only available via GitHub, hence the additional steps for installation indicated in the code chunk below.
+
+```{r packages, functions, and data}
+# Load imdccal package
+# Steps for installation are commented out
+# install.packages("remotes")
+# library(remotes) # to facilitate downloading packages from github
+# remotes::install_github("nationalparkservice/imd-ccal") 
+library(imdccal) # nps package for formatting CCAL data
+
+# Load all other packages
+library(tidyverse) # data wrangling
+library(readxl) # reading excel files
+library(lubridate) # working with dates
+library(openxlsx) # exporting excel files
+library(here) # relative file paths
+library(fpCompare) # comparing floating point numbers
+library(DBI) # working with databases
+library(odbc) # working with databases
+
+# Load functions from our script
+source("format_edd.R")
+
+# Load ROMN's limits table for CCAL data
+limits <- readRDS(here('data', 'raw', limits_filename))
+```
+
+# Creating the EDD
+
+## The automated stuff
+
+Here we run the automated routine for creating the EDD, and we store it on our R environment.
+Optionally, uncomment relevant code below in order to write the EDD to a file.
+See "format_edd.R" for details on the functions called in this code chunk.
+
+```{r}
+# Create EDD and store in environment
+edds <- format_edd_ccal(ccal_file_paths = here("data", "raw", ccal_deliverable_filename),
+                        db_file_path = here("data", "databases", db_filename),
+                        pre_2020 = FALSE,
+                        limits = limits,
+                        concat = FALSE) # if multiple file paths are supplied, optionally change concat to 
+                                       # TRUE to create one EDD instead of one for each file name
+
+# Write the EDD to file
+# write_data(all_data = edds,
+#            format = "xlsx",
+#            destination_folder = here("data/output"),
+#            overwrite = TRUE,
+#            suffix = "_edd",
+#            num_tables = 4)
+
+# Alternatively create EDD and write to excel file in one step
+# write_edd(ccal_file_paths = here("data", "raw", ccal_deliverable_filename),
+#           db_file_path = here("data", "databases", db_filename),
+#           pre_2020 = FALSE,
+#           format = "xlsx", # "csv" is the other option
+#           destination_folder = here("data/output"),
+#           overwrite = TRUE,
+#           limits = limits,
+#           concat = FALSE) # if multiple file paths are supplied, optionally change concat to
+#                           # TRUE to create one EDD instead of one for each file name
+```
+
+## The manual stuff
+
+To facilitate manual review, we create a single table that contains enough information to understand the results of the QC process without inspecting the full EDD.
+This should reduce the effort associated with navigating the multiple tables and many columns of the EDD.
+Again, you can review this table in your R environment, or you can uncomment the relevant code below to write the snapshot(s) of the EDD(s) to an Excel file.
+
+```{r}
+# Create table that is easier to review
+edd_snapshots <- lapply(edds, function(edd) {
+  edd$Results %>%
+    left_join(edd$Activities, by = "Activity_ID") %>%
+    select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, 
+           Filtered_Fraction, Result_Text, Result_Detection_Condition, Result_Qualifier, 
+           Method_Detection_Limit, Lower_Quantification_Limit, Source_Flags, Result_Comment)
+})
+
+names(edd_snapshots) <- names(edds)
+
+# Optionally, write the EDD snapshot to a file
+# lapply(1:length(edd_snapshots), function(i) {
+#   write.xlsx(edd_snapshots[[i]],
+#              here("data", "output",
+#                   paste0(str_extract(names(edd_snapshots)[[i]], "^.*(?=\\.)"), "_edd_snapshot.xlsx")))
+# })
+```
+
+There are some comments from the CCAL data that require manual review in order to determine if a flag is needed and where in the flag hierarchy the flag should be placed.
+Below, we filter for any results that have comments that require review.
+Please see the Source_Flags column to review those comments. 
+
+```{r}
+# The ecologist will manually apply flags based on Source_Flags
+lapply(edd_snapshots, function(snapshot) {
+  snapshot %>%
+    filter(!is.na(Source_Flags))
+})
+```
+
+There may also be textual comments from CCAL that have not been automatically matched with rows in the EDD.
+We display any such comments below for the ecologist to review and possibly use to apply relevant QC flags.
+
+```{r}
+# Sometimes these comments have no lab numbers associated with them so I did not attempt to automate their inclusion in Source_Flags
+# If output is NA, there are no other comments from CCAL to consider
+getCCALData(here("data", "raw", ccal_deliverable_filename)) %>%
+  lapply(function(deliverable) {
+    deliverable$metadata$quest_results_comments
+  })
+```
+
+Finally, the ecologist should apply any other relevant manual QC before submitting the EDD.

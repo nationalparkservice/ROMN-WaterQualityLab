@@ -1,2 +1,9 @@
-
-.ipynb_checkpoints/WaterQuality_OSUCCAL_Preprocessing-checkpoint.ipynb
+data/
+tests/test-data/
+*.csv
+*.xlsx
+*.accdb
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
