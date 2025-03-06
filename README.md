@@ -1,6 +1,6 @@
 # Overview
 
-This repository houses ROMN's code for processing and quality control of water chemistry lab deliverables from CCAL (perhaps also Test America eventually).
+This repository houses ROMN's code for processing and quality control of water chemistry lab deliverables from CCAL and Test America.
 
 # Contents
 
@@ -15,33 +15,42 @@ Code folder:
 Data folder: blocked by `.gitignore`. See the setup instructions below.
 
 Tests folder:
+
 - test-data: a subfolder containing data for the testing suite. Blocked by `.gitignore`. See the setup instructions below.
 - test-qc.R: a script for verifying that the quality control in code/format_edd.R is working properly
+
+Archive folder: contains preprocessing Python scripts that were used to prepare lab deliverables for a VBA routine in Access. 
+Both the Python scripts and the VBA in Access have been superseded by the R code in this repository.
 
 # Setup
 
 Since we are not storing data on GitHub, you will need to set up the data and tests/test-data directories on your local computer.
-To do this, create a folder called data.
-Inside this folder create four subfolders: output, databases, EDD_examples, and raw.
+To do this, follow these steps.
 
-For now, you can leave the output folder empty.
+1. Create a folder called `data` in the root of your repository
+
+2. Inside the `data` folder create a subfolder called `output`. 
+You can leave this folder empty for now.
 It will populate with files as you run the code in this repository.
 
-In the databases folder, place a copy of this database from the Z drive: "Z:\MONITORING\Streams\Data\Tools\SEI_ROMN_WQLab_Processing_Template_20230628v2.accdb".
-Some of the tables are on SQL Server so that may require additional setup.
-We use the dbo_Site, dbo_SitesMetadata, dbo_CollectionEvent, and dbo_WaterSediment, and tbl_Projects_EDD tables in this database to create EDDs from CCAL deliverables.
+four subfolders: output, databases, EDD_examples, and raw.
 
-In the EDD_examples folder, copy over the examples from this location on the Z drive:
-FIND A PLACE TO PUT THIS.
-These examples are used in CCAL_compare_current_to_historical_EDDs.Rmd to compare the results of our historical and new CCAL data processing scripts.
+3. Inside the `data` folder create a subfolder called `databases`.
+In the `databases` folder, place a copy of this database from the Z drive: "Z:\MONITORING\Streams\Data\Tools\SEI_ROMN_WQLab_Processing_Template_20230628v2.accdb".
+Some of the tables in this database are on SQL Server and may require additional setup depending on your permissions.
+The tables on SQL Server that are used by the code in this repository are dbo_Site, dbo_SitesMetadata, dbo_CollectionEvent, and dbo_WaterSediment.
 
-In the raw folder, copy over the limits table and some CCAL deliverables from this location on the Z drive:
-FIND A PLACE TO PUT THIS
-The limits table is required for creating any EDD, and must be kept up to date.
-The CCAL deliverables from the Z drive allow the examples to run in the R Markdown scripts.
-The raw folder is also where you will put additional CCAL deliverables for processing as they become available.
+4. Copy and paste the `EDD_examples` folder from the Z drive into your `data` folder (so `EDD_examples` will be a subfolder within `data`).
+You can find the `EDD_examples` folder here (we may need a more permanent location eventually): "Z:\Personnel\Liam Smith\water-quality-lab\EDD_examples".
+The `EDD_examples` folder contains historical EQuIS deliverables that are used in CCAL_compare_current_to_historical_EDDs.Rmd to compare the results of our historical and new CCAL data processing scripts. 
+They are not necessary if you are only interested in processing new data.
 
-Finally, inside the tests folder, create a tests-data subfolder.
-Copy over the files from this location on the Z drive:
-FIND A PLACE TO PUT THIS.
+5. Copy and paste the `raw` folder from the Z drive into your `data` folder (so `raw` will be a subfolder within `data`).
+You can find the `raw` folder here (we may need a more permanent location eventually): "Z:\Personnel\Liam Smith\water-quality-lab\raw".
+The `raw` folder contains CCAL and TestAmerica deliverables that allow the examples to run in the R Markdown scripts.
+They are not necessary if you are only interested in processing new data.
+The raw folder is also where you will put additional lab deliverables for processing as they become available.
+
+6. Copy and paste the `test-data` folder from the Z drive into the `tests` folder.
+You can find the `test-data` folder here (we may need a more permanent location eventually): "Z:\Personnel\Liam Smith\water-quality-lab\test-data".
 These files are used to verify that our quality control is working properly.
