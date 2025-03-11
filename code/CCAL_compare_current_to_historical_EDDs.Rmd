@@ -34,9 +34,6 @@ library(odbc) # working with databases
 # Load functions from our two other scripts
 source("test_edd.R")
 source("format_edd.R")
-
-# Define limits table
-limits <- readRDS(here('data/raw/limits.rds'))
 ```
 
 # Create 2019 EDD
@@ -48,9 +45,8 @@ By default we store the EDD in the R environment, but you may uncomment code bel
 ```{r}
 # Create EDD and store in environment
 edd_2019 <- format_edd_ccal(ccal_file_paths = here("data/raw/ROMN_103119.xlsx"),
-                       db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
-                       pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"),
-                       limits = limits)
+                       db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
+                       pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"))
 
 # Write the EDD from R environment to file
 # write_data(all_data = edd_2019,
@@ -61,13 +57,13 @@ edd_2019 <- format_edd_ccal(ccal_file_paths = here("data/raw/ROMN_103119.xlsx"),
 #            num_tables = 4)
 
 # Alternatively create EDD and write to excel file in one step
-# write_edd(ccal_file_paths = here("data/raw/ROMN_103119.xlsx"),
-#           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
+# write_edd(deliverable_file_paths = here("data/raw/ROMN_103119.xlsx"),
+#           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
 #           pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"),
+#           lab = "CCAL",
 #           format = "xlsx",
 #           destination_folder = here("data/output"),
-#           overwrite = TRUE,
-#           limits = limits)
+#           overwrite = TRUE)
 ```
 
 Here, we create a single table that contains enough information to understand the results of the QC process without inspecting the full 2019 EDD across multiple tables.
@@ -254,9 +250,8 @@ edds <- format_edd_ccal(ccal_file_paths = c(here("data/raw/ROMN_101823.xlsx"),
                      here("data/raw/ROMN_081021.xlsx"),
                      here("data/raw/ROMN_102221.xlsx"),
                      here("data/raw/ROMN_100620.xlsx")),
-                   db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
-                   pre_2020 = FALSE,
-                   limits = limits)
+                   db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
+                   pre_2020 = FALSE)
 
 # Write the EDD to file
 # write_data(all_data = edds,
@@ -267,17 +262,17 @@ edds <- format_edd_ccal(ccal_file_paths = c(here("data/raw/ROMN_101823.xlsx"),
 #            num_tables = 4)
 
 # Alternatively create EDDs and write to excel files in one step
-# write_edd(ccal_file_paths = c(here("data/raw/ROMN_101823.xlsx"),
+# write_edd(deliverable_file_paths = c(here("data/raw/ROMN_101823.xlsx"),
 #                      here("data/raw/ROMN_102920.xlsx"),
 #                      here("data/raw/ROMN_081021.xlsx"),
 #                      here("data/raw/ROMN_102221.xlsx"),
 #                      here("data/raw/ROMN_100620.xlsx")),
-#           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
+#           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
 #           pre_2020 = FALSE,
+#           lab = "CCAL",
 #           format = "xlsx",
 #           destination_folder = here("data/output"),
-#           overwrite = TRUE,
-#           limits = limits)
+#           overwrite = TRUE)
 ```
 
 Here, we create a single table for each EDD that contains enough information to understand the results of the QC process without inspecting the full EDD across multiple tables.

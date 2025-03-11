@@ -13,16 +13,15 @@ Much of the process is automated, but after running the script you will need to 
 # Setup
 
 First, we define the constants that our code will refer to throughout this script.
-Specifically, please supply the name of your preferred copy of the database, the relevant CCAL deliverable(s), and the limits table, and double check that they are in the appropriate file directories.
+Specifically, please supply the name of your preferred copy of the database and the relevant CCAL deliverable(s) and double check that they are in the appropriate file directories.
 
-If processing a new year of data, you may need to revise the EndDate column of the limits table.
+If processing a new year of data, you may need to revise the EndDate column of the tlu_CCAL_limits table in the processing database.
 This is also a good time to confirm whether the detection limits have remained the same or changed and update the table as appropriate.
-We maintain a ROMN version of the limits table, but the instructions in the imdccal package (https://github.com/nationalparkservice/imd-ccal) are useful for understanding the table's usage and purpose.
+We maintain a ROMN version of the limits table in our database, but the instructions in the imdccal package (https://github.com/nationalparkservice/imd-ccal) are useful for understanding the table's usage and purpose.
 
 ```{r constants}
 db_filename <- "SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb" # must be in data/databases
 ccal_deliverable_filename <- "ROMN_070224.xlsx" # must be in data/raw. May supply a vector of multiple file names if desired
-limits_filename <- "limits.rds" # must be in data/raw
 ```
 
 Now we load the packages, functions, and data required to run the processing code.
@@ -49,9 +48,6 @@ library(odbc) # working with databases
 
 # Load functions from our script
 source("format_edd.R")
-
-# Load ROMN's limits table for CCAL data
-limits <- readRDS(here('data', 'raw', limits_filename))
 ```
 
 # Creating the EDD
@@ -67,9 +63,8 @@ See "format_edd.R" for details on the functions called in this code chunk.
 edds <- format_edd_ccal(ccal_file_paths = here("data", "raw", ccal_deliverable_filename),
                         db_file_path = here("data", "databases", db_filename),
                         pre_2020 = FALSE,
-                        limits = limits,
                         concat = FALSE) # if multiple file paths are supplied, optionally change concat to 
-                                       # TRUE to create one EDD instead of one for each file name
+                                        # TRUE to create one EDD instead of one for each file name
 
 # Write the EDD to file
 # write_data(all_data = edds,
@@ -80,13 +75,13 @@ edds <- format_edd_ccal(ccal_file_paths = here("data", "raw", ccal_deliverable_f
 #            num_tables = 4)
 
 # Alternatively create EDD and write to excel file in one step
-# write_edd(ccal_file_paths = here("data", "raw", ccal_deliverable_filename),
+# write_edd(deliverable_file_paths = here("data", "raw", ccal_deliverable_filename),
 #           db_file_path = here("data", "databases", db_filename),
 #           pre_2020 = FALSE,
+#           lab = "CCAL",
 #           format = "xlsx", # "csv" is the other option
 #           destination_folder = here("data/output"),
 #           overwrite = TRUE,
-#           limits = limits,
 #           concat = FALSE) # if multiple file paths are supplied, optionally change concat to
 #                           # TRUE to create one EDD instead of one for each file name
 ```

@@ -1,0 +1,178 @@
+---
+title: "TestAmerica EDD"
+output: html_document
+date: "2025-02-12"
+---
+
+# Purpose
+
+Drafting the EQuIS EDD creation process for TestAmerica data and comparing current output to historical output.
+
+# Setup
+
+First, we load the packages, functions, and data required to run this script.
+
+```{r}
+# Packages
+library(tidyverse) # data wrangling
+library(readxl) # reading excel files
+library(openxlsx) # exporting excel files
+library(here) # relative file paths
+library(fpCompare) # comparing floating point numbers
+library(DBI) # working with databases
+library(odbc) # working with databases
+
+# Functions
+source("format_edd.R")
+source("test_edd.R")
+```
+
+# Create 2021 EDD
+
+In this section we create an EDD for the CCAL data from 2021.
+
+```{r}
+# Define TA deliverable file names
+ta_filenames_2021 <- c("280-147837-1_TalStandard.csv",
+                  "280-148304-1_TalStandard.csv",
+                  "280-149036-1_TalStandard.csv",
+                  "280-149967-1_TalStandard.csv",
+                  "280-150396-1_TalStandard.csv",
+                  "280-151067-1_TalStandard.csv",
+                  "280-152639-1_TalStandard.csv",
+                  "280-154540-1_TalStandard.csv",
+                  "280-156396-1_TalStandard.csv")
+
+# Define TA deliverable file paths
+ta_filepaths_2021 <- here(paste0("data/raw/", ta_filenames_2021))
+
+# Create EDD
+edd_2021 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2021, 
+                                    db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"))
+```
+
+# Test 2021 EDD
+
+Note that we manually adjust some of the Activity_ID's for the purposes of comparison.
+These differences occurred due to a discrepancy in the date (possibly adjusted manually during QC).
+
+```{r}
+comparison_2021 <- compare_edd(edd_old_file_path <- here('data/EDD_examples/ROMN_WQ_EDD_TestAmerica_20220602.xlsx'),
+                               edd_new = list(Projects = edd_2021$Projects,
+                                              Locations = edd_2021$Locations,
+                                              Activities = edd_2021$Activities %>%
+                                                mutate(Activity_ID = case_when(Activity_ID == "ROMN_GRKO_S01_20210803_T_Sediment_0" ~ 
+                                                                                 "ROMN_GRKO_S01_20210802_T_Sediment_0",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Sediment_1" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Sediment_1",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Water_0" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Water_0",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Water_1" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Water_1",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Water_2" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Water_2",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Water_3" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Water_3",
+                                                                               TRUE ~ Activity_ID)),
+                                              Results = edd_2021$Results %>%
+                                                mutate(Activity_ID = case_when(Activity_ID == "ROMN_GRKO_S01_20210803_T_Sediment_0" ~ 
+                                                                                 "ROMN_GRKO_S01_20210802_T_Sediment_0",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Sediment_1" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Sediment_1",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Water_0" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Water_0",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Water_1" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Water_1",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Water_2" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Water_2",
+                                                                               Activity_ID == "ROMN_GRKO_S01_20210803_T_Water_3" ~
+                                                                                 "ROMN_GRKO_S01_20210802_T_Water_3",
+                                                                               TRUE ~ Activity_ID))))
+```
+
+Summary/explanation of the differences:
+
+- Activities:
+    - Activity_Type (6): we are now correctly recording when something is a field blank or field dup rather than saying all are sample-routine
+    - Activity_Start_Date (6): there are 6 observations where the date was historically 20210802 but in the new EDD is 20210803. I manually corrected the date part of the Activity_ID column in order to get my comparison function to work, but I left the date column unchanged. I suspect that these dates were corrected to 20210802 in the historical EDD as part of a manual QC process.
+    - Activity_Comment (3): the differences appear to be due to incomplete sentences at the end of the comments in the old EDD.
+    
+- Results:
+    - Result_Detection_Condition (2): I verified these two differences in the TestAmerica deliverable. They reported these as "ND" for "Not Detected", as the new EDD correctly states. The old EDD reported these as "Detected and Quantified".
+    - Result_Text (2): I verified these two differences in the TestAmerica deliverable. They reported these as "ND" for "Not Detected", and the new EDD correctly censors these results. The old EDD reported these as equal to the MDL (we are also supposed to censor measurements equal to the MDL anyway).
+    - Result_Unit (5): These 5 differences are in the unit of Moisture content. Unsure how to resolve; need to ask water quality party.
+    - Result_Qualifier (273): ??
+    - Result_Type (113): in the new EDD, we set the `Result_Type` to "Estimated" when the "J-R" flag is raised.
+    - Result_Comment (646): ??
+    - Lower_Quantification_Limit (112): These 112 differences are records that are NA in the old EDD but have an LQL in the new EDD. These are all observations that have the J-R flag -- it seems the VBA code set the LQL to NA when J-R was raised (but not sure where that happens). We should always include the LQL when possible.
+    - Analysis_Start_Date (646): new code uses analysis start date (Analysis Date in TestAmerica deliverable) rather than activity start date
+    - Analysis_Start_Time (646): new code uses analysis start time (Analysis Date in TestAmerica deliverable) instead of setting everything to midnight
+    - Lab_Reported_Result (268): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
+    - Reportable_Result (271): new code always sets this to 'Y'
+
+# Create 2019 EDD
+
+In this section we create an EDD for the CCAL data from 2019.
+
+```{r}
+# Define TA deliverable file names
+ta_filenames_2019 <- c("280-123562-1_TalStandard.csv",
+                       "280-123566-1_TalStandard.csv",
+                       "280-124111-1_TalStandard.csv",
+                       "280-124119-1_TalStandard.csv",
+                       "280-124141-1_TalStandard.csv",
+                       "280-124485-1_TalStandard.csv",
+                       "280-125452-1_TalStandard.csv",
+                       "280-126433-1_TalStandard.csv",
+                       "280-126425-1_TalStandard.csv",
+                       "280-125633-1_TalStandard.csv",
+                       "280-127663-1_TalStandard.csv",
+                       "280-127918-1_TalStandard.csv",
+                       "280-128955-1_TalStandard.csv",
+                       "280-129879-1_TalStandard.csv",
+                       "280-129898-1_TalStandard.csv",
+                       "280-131288-1_TalStandard.csv",
+                       "280-132126-1_TalStandard.csv")
+
+# Define TA deliverable file paths
+ta_filepaths_2019 <- here(paste0("data/raw/", ta_filenames_2019))
+
+# Create EDD
+edd_2019 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2019, 
+                                    db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
+                                    pre_2020 = TRUE)
+```
+
+# Test 2019 EDD
+
+```{r}
+comparison_2019 <- compare_edd(edd_old_file_path <- here('data/EDD_examples/ROMN_WQ_EDD_20200205.xlsx'),
+                               edd_new = edd_2019)
+```
+
+# Create 2022 EDD
+
+In this section we create an EDD for the CCAL data from 2019.
+
+```{r}
+# Define TA deliverable file names
+ta_filenames_2022 <- c("280-166181-1_TalStandard.csv",
+                       "280-166195-1_TalStandard.csv",
+                       "280-166196-1_TalStandard.csv",
+                       "280-168778-1_TalStandard.csv",
+                       "280-164074-1_TalStandard.csv")
+
+# Define TA deliverable file paths
+ta_filepaths_2022 <- here(paste0("data/raw/", ta_filenames_2022))
+
+# Create EDD
+edd_2022 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2022, 
+                                    db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"))
+```
+
+# Test 2022 EDD
+
+```{r}
+comparison_2022 <- compare_edd(edd_old_file_path <- here('data/EDD_examples/ROMN_WQ_EDD_20230309_PostEDP.xlsx'),
+                               edd_new = edd_2022)
+```

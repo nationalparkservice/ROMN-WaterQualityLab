@@ -267,8 +267,7 @@ test_that("The formatting produced by format_edd_ccal has not changed", {
   # Format EDDs
   new_edd_2019 <- format_edd_ccal(ccal_file_paths = here("data/raw/ROMN_103119.xlsx"),
                               db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
-                              pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"),
-                              limits = limits)
+                              pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"))
   
   new_edds_post_2019 <- format_edd_ccal(ccal_file_paths = c(here("data/raw/ROMN_101823.xlsx"),
                                               here("data/raw/ROMN_102920.xlsx"),
@@ -276,8 +275,7 @@ test_that("The formatting produced by format_edd_ccal has not changed", {
                                               here("data/raw/ROMN_102221.xlsx"),
                                               here("data/raw/ROMN_100620.xlsx")),
                           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
-                          pre_2020 = FALSE,
-                          limits = limits)
+                          pre_2020 = FALSE)
 
   # Test equality on EDD before 2020
   expect_equal(old_edd_2019,
