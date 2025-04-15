@@ -6,7 +6,7 @@ date: "2025-02-12"
 
 # Purpose
 
-Drafting the EQuIS EDD creation process for TestAmerica data and comparing current output to historical output.
+Drafting the EQuIS EDD creation process for TestAmerica data and comparing current to historical output.
 
 # Setup
 
@@ -21,6 +21,7 @@ library(here) # relative file paths
 library(fpCompare) # comparing floating point numbers
 library(DBI) # working with databases
 library(odbc) # working with databases
+library(imdccal) # has a function for writing EDDs
 
 # Functions
 source("format_edd.R")
@@ -49,6 +50,23 @@ ta_filepaths_2021 <- here(paste0("data/raw/", ta_filenames_2021))
 # Create EDD
 edd_2021 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2021, 
                                     db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"))
+
+# Write the EDD from R environment to file
+# write_ccal(all_data = list(ROMN_TestAmerica_2021 = edd_2021),
+#            format = "xlsx",
+#            destination_folder = here("data/output"),
+#            overwrite = TRUE,
+#            suffix = "_edd",
+#            num_tables = 4)
+
+# Alternatively create EDD and write to excel file in one step
+# write_edd(deliverable_file_paths = ta_filepaths_2021,
+#           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
+#           pre_2020 = FALSE,
+#           lab = "Test America",
+#           format = "xlsx",
+#           destination_folder = here("data/output"),
+#           overwrite = TRUE)
 ```
 
 # Test 2021 EDD
@@ -98,21 +116,97 @@ Summary/explanation of the differences:
     - Activity_Comment (3): the differences appear to be due to incomplete sentences at the end of the comments in the old EDD.
     
 - Results:
-    - Result_Detection_Condition (2): I verified these two differences in the TestAmerica deliverable. They reported these as "ND" for "Not Detected", as the new EDD correctly states. The old EDD reported these as "Detected and Quantified".
-    - Result_Text (2): I verified these two differences in the TestAmerica deliverable. They reported these as "ND" for "Not Detected", and the new EDD correctly censors these results. The old EDD reported these as equal to the MDL (we are also supposed to censor measurements equal to the MDL anyway).
-    - Result_Unit (5): These 5 differences are in the unit of Moisture content. Unsure how to resolve; need to ask water quality party.
-    - Result_Qualifier (273): ??
-    - Result_Type (113): in the new EDD, we set the `Result_Type` to "Estimated" when the "J-R" flag is raised.
-    - Result_Comment (646): ??
+    - Result_Detection_Condition (114): Most of these differences occur because we now set the detection condition to "Present Below Quantification Limit" when a value is less than the LQL, but greater than or equal to the MDL. I verified the final two differences in the TestAmerica deliverable. They reported these as "ND" for "Not Detected", as the new EDD correctly states. The old EDD reported these as "Detected and Quantified".
+    - Result_Text (111): We now censor all results less than the LQL
+    - **Result_Qualifier** (273-->456):
+    - Result_Comment (516): we changed the structure of this field
     - Lower_Quantification_Limit (112): These 112 differences are records that are NA in the old EDD but have an LQL in the new EDD. These are all observations that have the J-R flag -- it seems the VBA code set the LQL to NA when J-R was raised (but not sure where that happens). We should always include the LQL when possible.
+    - Lab_ID (646): Dean created a new option for us, EUROFINS_DEN, which we will use going forwards
     - Analysis_Start_Date (646): new code uses analysis start date (Analysis Date in TestAmerica deliverable) rather than activity start date
     - Analysis_Start_Time (646): new code uses analysis start time (Analysis Date in TestAmerica deliverable) instead of setting everything to midnight
     - Lab_Reported_Result (268): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
     - Reportable_Result (271): new code always sets this to 'Y'
 
+# Create 2022 EDD
+
+In this section we create an EDD for the CCAL data from 2019.
+
+```{r}
+# Define TA deliverable file names
+ta_filenames_2022 <- c("280-166181-1_TalStandard.csv",
+                       "280-166195-1_TalStandard.csv",
+                       "280-166196-1_TalStandard.csv",
+                       "280-168778-1_TalStandard.csv",
+                       "280-164074-1_TalStandard.csv")
+
+# Define TA deliverable file paths
+ta_filepaths_2022 <- here(paste0("data/raw/", ta_filenames_2022))
+
+# Create EDD
+edd_2022 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2022, 
+                                    db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"))
+
+# Write the EDD from R environment to file
+# write_ccal(all_data = list(ROMN_TestAmerica_2022 = edd_2022),
+#            format = "xlsx",
+#            destination_folder = here("data/output"),
+#            overwrite = TRUE,
+#            suffix = "_edd",
+#            num_tables = 4)
+
+# Alternatively create EDD and write to excel file in one step
+# write_edd(deliverable_file_paths = ta_filepaths_2022,
+#           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
+#           pre_2020 = FALSE,
+#           lab = "Test America",
+#           format = "xlsx",
+#           destination_folder = here("data/output"),
+#           overwrite = TRUE)
+```
+
+# Test 2022 EDD
+
+```{r}
+comparison_2022 <- compare_edd(edd_old_file_path <- here('data/EDD_examples/ROMN_WQ_EDD_20230309_PostEDP.xlsx'),
+                               edd_new = list(Projects = edd_2022$Projects,
+                                              Locations = edd_2022$Locations,
+                                              Activities = edd_2022$Activities %>%
+                                                mutate(Activity_ID = if_else(Activity_ID == "ROMN_GLAC_S04_20220719_T_Sediment_0",
+                                                                             "ROMN_GLAC_S04_20220714_T_Sediment_0",
+                                                                             Activity_ID)),
+                                              Results = edd_2022$Results %>%
+                                                mutate(Activity_ID = if_else(Activity_ID == "ROMN_GLAC_S04_20220719_T_Sediment_0",
+                                                                             "ROMN_GLAC_S04_20220714_T_Sediment_0",
+                                                                             Activity_ID))))
+```
+
+Summary/explanation of the differences:
+
+- Projects:
+    - Project_Start_Date (1): different date format
+    
+- Activities:
+    - Activity_Type (5): we are now correctly recording when something is a field blank or field dup rather than saying all are sample-routine
+    - Activity_Start_Date (70): The new EDD does not include the slashes in dates. In one case, I also manually corrected the date part of the Activity_ID column in order to get my comparison function to work, but I left the date column unchanged. I suspect that these dates were corrected in the historical EDD as part of a manual QC process.
+
+- Results:
+    - Result_Detection_Condition (127): Most of these differences occur because we now set the detection condition to "Present Below Quantification Limit" when a value is less than the LQL, but greater than or equal to the MDL. There is one observation which the old EDD reported these as "Detected and Quantified" but is actually a non-detect from the lab
+    - Result_Text (127): we now censor all results less than the LQL
+    - **Result_Qualifier** (298 --> 432):
+    - Result_Comment (486): we changed the structure of this field
+    - Lower_Quantification_Limit (129): These differences are records that are NA in the old EDD but have an LQL in the new EDD. These are all observations that have the J-R flag -- it seems the VBA code set the LQL to NA when J-R was raised (but not sure where that happens). We should always include the LQL when possible.
+    - Lab_ID (608): Dean created a new option for us, EUROFINS_DEN, which we will use going forwards
+    - Analysis_Start_Date (608): new code uses analysis start date (Analysis Date in TestAmerica deliverable) rather than activity start date
+    - Analysis_Start_Time (608): new code uses analysis start time (Analysis Date in TestAmerica deliverable) instead of setting everything to midnight
+    - Lab_Reported_Result (253): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
+    - Reportable_Result (253): new code always sets this to 'Y'
+
 # Create 2019 EDD
 
 In this section we create an EDD for the CCAL data from 2019.
+
+NOT WORKING!
+It seems that analogous dissolved vs total fractions were not always collected or have somehow been lost...
 
 ```{r}
 # Define TA deliverable file names
@@ -140,39 +234,89 @@ ta_filepaths_2019 <- here(paste0("data/raw/", ta_filenames_2019))
 # Create EDD
 edd_2019 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2019, 
                                     db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
-                                    pre_2020 = TRUE)
+                                    pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"))
+
+# Write the EDD from R environment to file
+# write_ccal(all_data = list(ROMN_TestAmerica_2019 = edd_2019),
+#            format = "xlsx",
+#            destination_folder = here("data/output"),
+#            overwrite = TRUE,
+#            suffix = "_edd",
+#            num_tables = 4)
+
+# Alternatively create EDD and write to excel file in one step
+# write_edd(deliverable_file_paths = ta_filepaths_2019,
+#           db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
+#           pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"),
+#           lab = "Test America",
+#           format = "xlsx",
+#           destination_folder = here("data/output"),
+#           overwrite = TRUE)
 ```
+
 
 # Test 2019 EDD
 
 ```{r}
 comparison_2019 <- compare_edd(edd_old_file_path <- here('data/EDD_examples/ROMN_WQ_EDD_20200205.xlsx'),
-                               edd_new = edd_2019)
+                               edd_new = list(Projects = edd_2019$Projects,
+                                              Locations = edd_2019$Locations,
+                                              Activities = edd_2019$Activities %>%
+                                                mutate(Activity_ID = str_replace(Activity_ID, "_T_", "_")) %>%
+                                                mutate(Activity_ID = case_when(Activity_ID == "ROMN_GRKO_S01_20190326_Water_0" ~ 
+                                                                                 "ROMN_GRKO_S01_20190526_Water_0", # date adjustment
+                                                                               Activity_ID == "ROMN_GRKO_S01_20190326_Water_1" ~
+                                                                                 "ROMN_GRKO_S01_20190526_Water_1", # date adjustment
+                                                                               Activity_ID == "ROMN_GRKO_S01_20190326_Sediment_0" ~
+                                                                                 "ROMN_GRKO_S01_20190526_Sediment_0", # date adjustment
+                                                                               Activity_ID == "ROMN_ROMO_S02_20190508_Water_0" ~
+                                                                                 "ROMN_ROMO_S02_20190507_Water_1", # date adjustment
+                                                                               Activity_ID == "ROMN_GLAC_022_20190930_Water_0" ~
+                                                                                 "ROMN_GLAC_022_20190822_Water_1", # seems they manually adjusted
+                                                                               Activity_ID == "ROMN_GLAC_022_20190930_Water_1" ~
+                                                                                 "ROMN_GLAC_022_20190930_Water_0", # seems they manually adjusted
+                                                                               TRUE ~ Activity_ID
+                                                                               )) %>%
+                                                filter(Additional_Location_Info != "GLAC_022_2019_3" & Custody_ID != "19NPS0000568 E6.FAC"), # since we merged two events we needed to remove the event that does not show up in the old data
+                                              Results = edd_2019$Results  %>%
+                                                mutate(Activity_ID = str_replace(Activity_ID, "_T_", "_")) %>%
+                                                mutate(Activity_ID = case_when(Activity_ID == "ROMN_GRKO_S01_20190326_Water_0" ~ 
+                                                                                 "ROMN_GRKO_S01_20190526_Water_0", # date adjustment
+                                                                               Activity_ID == "ROMN_GRKO_S01_20190326_Water_1" ~
+                                                                                 "ROMN_GRKO_S01_20190526_Water_1", # date adjustment
+                                                                               Activity_ID == "ROMN_GRKO_S01_20190326_Sediment_0" ~
+                                                                                 "ROMN_GRKO_S01_20190526_Sediment_0", # date adjustment
+                                                                               Activity_ID == "ROMN_ROMO_S02_20190508_Water_0" ~
+                                                                                 "ROMN_ROMO_S02_20190507_Water_1", # date adjustment
+                                                                               Activity_ID == "ROMN_GLAC_022_20190930_Water_0" ~
+                                                                                 "ROMN_GLAC_022_20190822_Water_1", # seems they manually adjusted
+                                                                               Activity_ID == "ROMN_GLAC_022_20190930_Water_1" ~
+                                                                                 "ROMN_GLAC_022_20190930_Water_0", # seems they manually adjusted
+                                                                               TRUE ~ Activity_ID
+                                                                               ))))
 ```
 
-# Create 2022 EDD
+where did this come from...?
 
-In this section we create an EDD for the CCAL data from 2019.
+Latitude 3 
+Longitude 4 
+HUC8_Code 1 
+HUC12_Code 1 
 
-```{r}
-# Define TA deliverable file names
-ta_filenames_2022 <- c("280-166181-1_TalStandard.csv",
-                       "280-166195-1_TalStandard.csv",
-                       "280-166196-1_TalStandard.csv",
-                       "280-168778-1_TalStandard.csv",
-                       "280-164074-1_TalStandard.csv")
+Activity_Type 3 
+Activity_Start_Date 4 
+Additional_Location_Info 1 --> they manually adjusted this?
+Activity_Comment 48
 
-# Define TA deliverable file paths
-ta_filepaths_2022 <- here(paste0("data/raw/", ta_filenames_2022))
-
-# Create EDD
-edd_2022 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2022, 
-                                    db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"))
-```
-
-# Test 2022 EDD
-
-```{r}
-comparison_2022 <- compare_edd(edd_old_file_path <- here('data/EDD_examples/ROMN_WQ_EDD_20230309_PostEDP.xlsx'),
-                               edd_new = edd_2022)
-```
+Result_Detection_Condition 2 
+Result_Text 2
+Result_Unit 1 --> look into this
+Result_Qualifier 268
+Result_Status 675 
+Result_Type 128 
+Result_Comment 675 
+Lower_Quantification_Limit 127 
+Analysis_Start_Date 675 
+Analysis_Start_Time 675 
+Lab_Reported_Result 263
+Reportable_Result 266 

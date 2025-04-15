@@ -30,13 +30,15 @@ load_db <- function(file_path, lab, pre_2020 = FALSE) {
   
   # Load Test America Crosswalks
   if(lab == "Test America") {
-    return_list$flags <- DBI::dbReadTable(SEI_DB,"IMPORT_water_lab_TestAmerica_Flag_Descriptions")
+    lab_id <- "TESTAMC_AZ"
+    return_list$flags <- DBI::dbReadTable(SEI_DB,"tlu_TestAmerica_flags")
     return_list$units <- DBI::dbReadTable(SEI_DB, "Xwalk_Parameter_SampleFraction_Medium_Unit")
     return_list$methods <- DBI::dbReadTable(SEI_DB, "IMPORT_Water_Lab_TestAmerica_Analytical_Methods")
   }
   
   # Load CCAL crosswalk
   if(lab == "CCAL") {
+    lab_id <- "CCAL_LAB"
     return_list$limits <- DBI::dbReadTable(SEI_DB, "tlu_CCAL_limits")
   }
 
@@ -51,7 +53,7 @@ load_db <- function(file_path, lab, pre_2020 = FALSE) {
     # Routine for pre-2020 data
     # Need to use a different source for some data due to changes in our database
     return_list$Joined <- read_excel(pre_2020, na = "ND") %>%
-      filter(Lab_ID == "CCAL_LAB") %>%
+      filter(Lab_ID == lab_id) %>%
       select(Custody_ID, Additional_Location_Info, Activity_Comment) %>%
       distinct() %>%
       rename("SampleNumber" = "Custody_ID",
@@ -158,7 +160,6 @@ create_locations_table <- function(activities_or_results, dbo) {
 #' @param db_file_path File path to a copy of the SEI water quality lab processing database.
 #' @param pre_2020 By default set to false. If you are using data from before 2020, instead set this 
 #' to a file path to ROMN_SEI_in_EQuIS.xlsx, which includes a crosswalk between EventName and SampleNumber.
-#' @param qualifiers Table with flags and their meanings. By default, uses the version in the imdccal package. User-defined versions must have the same columns.
 #' @param concat If concat is set to TRUE, the tables are concatenated together for each input file.
 #' By default, concat is set to FALSE, so the output contains separate tables for each file.
 #' If only one file path is supplied to the file_paths argument, this parameter does not affect the output.
@@ -173,17 +174,16 @@ create_locations_table <- function(activities_or_results, dbo) {
 #'                             db_file_path = here("data/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
 #'                             pre_2020 = here("edd_examples/ROMN_SEI_in_EQuIS.xlsx"))
 #' }
-format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE, 
-                            qualifiers = imdccal::qualifiers, concat = FALSE){
+format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE, concat = FALSE){
   
   # Load database tables
   dbo <- load_db(db_file_path, "CCAL", pre_2020)
   
   # Clean data, join in some helpful fields
-  package_data <- getCCALData(ccal_file_paths, concat) %>%
+  package_data <- read_ccal(ccal_file_paths, concat) %>%
     lapply(function(x) {
       x[[1]] %>%
-        handle_duplicates() %>%
+        remove_ccal_duplicates() %>%
         dplyr::left_join(dbo$limits %>% dplyr::select(-analysis), # join MDL and ML to data
                          by = dplyr::join_by(parameter == analyte_code,
                                              date >= StartDate,
@@ -293,7 +293,7 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE,
   # ------------------------
   # CREATE RESULTS TABLE
   # ------------------------
-  edd_results <- pmap(list(format_results(ccal_file_paths, limits = dbo$limits, qualifiers = qualifiers, concat = concat), 
+  edd_results <- pmap(list(format_equis_results(ccal_file_paths, limits = dbo$limits, concat = concat), 
                            package_data, edd_activities), 
                       function(results, package_data, activities) {
       results %>%
@@ -311,9 +311,11 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE,
                Custody_ID = str_extract(site_id, "\\d{2}[A-Z]{3}\\d{7}")) %>%
         inner_join(activities %>% select(Activity_ID_wDups, Custody_ID, Activity_ID),
                    by = c("Activity_ID_wDups", "Custody_ID")) %>%
-        flag_replicates(activities, dbo$limits) %>% 
+        select(-Medium) %>%
+        flag_replicates(activities, "CCAL", dbo$limits) %>% 
         flag_blanks(activities) %>%
-        flag_tot_vs_dissolved(dissolved_characteristic_name = c("Phosphorus, phosphate (PO4) as P",
+        flag_tot_vs_dissolved(activities,
+                              dissolved_characteristic_name = c("Phosphorus, phosphate (PO4) as P",
                                                                "Phosphorus, phosphate (PO4) as P",
                                                                "Phosphorus",
                                                                "Nitrogen"),
@@ -329,17 +331,16 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE,
                                                           "Total",
                                                           "Total",
                                                           "Total")) %>%
-        mutate(current_flags = if_else(is.na(Result_Qualifier), "", paste0(Result_Qualifier, ", ")),
-               Result_Qualifier = case_when(!is.na(Result_Qualifier) ~ Result_Qualifier, # J-R
-                                            Tot_vs_Dissolved_Flag != "" ~ str_extract(Tot_vs_Dissolved_Flag, ".*(?=, )"), # NFNSU, NFNSI
-                                            Blank_Flag != "" ~ str_extract(Blank_Flag, ".*(?= \\()"), # FBK
-                                            Dup_Flag != "" ~ str_extract(Dup_Flag, ".*(?= \\()"), # SUS
+        mutate(Result_Qualifier = case_when(Blank_Flag != "" ~ "FBK", 
+                                            Dup_Flag != "" ~ "SUS", 
+                                            Tot_vs_Dissolved_Flag != "" ~ "SUS", # SUS
                                             TRUE ~ NA),
                Reportable_Result = "Y") %>%
-        left_join(qualifiers, by = c("Result_Qualifier" = "lookup_code")) %>%
-        mutate(Result_Comment = if_else(is.na(Result_Qualifier), NA,
-                                        str_extract(paste0("Description of primary flag: ", remark.y, "\nComplete list of relevant flags: ", 
-                                        current_flags, Tot_vs_Dissolved_Flag, Blank_Flag, Dup_Flag), "(.|\n)*(?=, $)"))) %>%
+        mutate(Result_Comment = paste0(if_else(is.na(Result_Comment), "", paste0(Result_Comment, " ")),
+                                       Blank_Flag, 
+                                       Dup_Flag,
+                                       Tot_vs_Dissolved_Flag)) %>%
+        mutate(Result_Comment = if_else(Result_Comment == "", NA, str_trim(Result_Comment))) %>%
         select(`#Org_Code`, Activity_ID, Characteristic_Name, Method_Speciation,  # ORDER TO MATCH EDD
                Filtered_Fraction, Result_Detection_Condition, Result_Text, 
                Result_Unit, Result_Qualifier, Result_Status, Result_Type, Result_Comment,
@@ -443,7 +444,7 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE,
 #' @return A fully formatted EQuIS deliverable ready for the ecologist's manual review.
 #' Specifically, this function a list containing 4 tables: Projects, Locations, Activities, and Results.
 format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2020 = FALSE,
-                                    qualifiers = imdccal::qualifiers){
+                                    qualifiers = imdccal::equis_qualifiers){
   
   # Load database tables
   dbo <- load_db(db_file_path, "Test America", pre_2020)
@@ -461,10 +462,14 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
     mutate(`#Org_Code` = "ROMN",
            Project_ID = paste(`#Org_Code`, "SEI", sep = "_"),
            Activity_Start_Date = format(mdy_hm(`Collection Date`), "%Y%m%d"),
-           Custody_ID = `Client Sample ID`, 
-           Custody_ID_Join = str_extract(`Client Sample ID`, "\\d{2}[A-Z]{3}\\d{7}"),
+           Custody_ID = `Client Sample ID`,
            Medium = if_else(Matrix == "Solid", "Sediment", Matrix)) %>%
-    left_join(dbo$Joined, by = c("Custody_ID_Join" = "SampleNumber")) %>%
+    { if (is.character(pre_2020)) {
+      left_join(., dbo$Joined, by = c("Custody_ID" = "SampleNumber"))
+    } else{
+      mutate(., Custody_ID_Join = str_extract(`Client Sample ID`, "\\d{2}[A-Z]{3}\\d{7}")) %>%
+      left_join(., dbo$Joined, by = c("Custody_ID_Join" = "SampleNumber"))
+    }} %>%
     mutate(Location_ID = paste(`#Org_Code`, str_extract(EventName, "(?i)[a-z]*_[a-z0-9]*"), sep = "_"),
            Activity_ID_wDups = paste(Location_ID, Activity_Start_Date, "T", Medium, sep = "_")) %>%
     select(`#Org_Code`, EventName, Project_ID, Location_ID, Activity_ID_wDups, Medium, Activity_Start_Date, Custody_ID, Notes) %>%
@@ -559,9 +564,13 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
     mutate(`#Org_Code` = "ROMN",
            Activity_Start_Date = format(mdy_hm(`Collection Date`), "%Y%m%d"),
            Custody_ID = `Client Sample ID`, 
-           Custody_ID_Join = str_extract(`Client Sample ID`, "\\d{2}[A-Z]{3}\\d{7}"),
            Medium = if_else(Matrix == "Solid", "Sediment", Matrix)) %>%
-    left_join(dbo$Joined, by = c("Custody_ID_Join" = "SampleNumber")) %>%
+    { if (is.character(pre_2020)) {
+      left_join(., dbo$Joined, by = c("Custody_ID" = "SampleNumber"))
+    } else{
+      mutate(., Custody_ID_Join = str_extract(`Client Sample ID`, "\\d{2}[A-Z]{3}\\d{7}")) %>%
+      left_join(., dbo$Joined, by = c("Custody_ID_Join" = "SampleNumber"))
+    }} %>%
     mutate(Location_ID = paste(`#Org_Code`, str_extract(EventName, "(?i)[a-z]*_[a-z0-9]*"), sep = "_"),
            Activity_ID_wDups = paste(Location_ID, Activity_Start_Date, "T", Medium, sep = "_")) %>%
     inner_join(activities %>% select(Activity_ID_wDups, Custody_ID, Activity_ID),
@@ -569,8 +578,8 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
     mutate(Characteristic_Name = if_else(Analyte == "Percent Moisture", "Moisture content", Analyte),
            Method_Speciation = NA,
            Filtered_Fraction = if_else(`Prep Type` == "Total/NA", "Total", `Prep Type`)) %>%
-    left_join(dbo$flags %>% select(-Flag),
-              by = join_by(Flag == Flag_TestAmerica)) %>%
+    # left_join(dbo$flags %>% select(-Flag),
+    #           by = join_by(Flag == Flag_TestAmerica)) %>%
     left_join(dbo$units,
               by = join_by(Unit == ResultValueUnits,
                            Medium == Medium,
@@ -587,17 +596,21 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
            Lower_Quantification_Limit = case_when(Conversion == "Yes" & Operation == "*" ~ `High Limit` * Factor,
                                                   Conversion == "Yes" & Operation == "/" ~ `High Limit` / Factor,
                                                   TRUE ~ `High Limit`),
-           Result_Text = if_else(Result_Text %<=% Method_Detection_Limit, NA, Result_Text),
-           Result_Detection_Condition = if_else(is.na(Result_Text), "Not Detected", "Detected And Quantified"), 
+           Result_Detection_Condition = case_when(Result_Text %<<% Method_Detection_Limit | Lab_Reported_Result == "ND" ~ "Not Detected",
+                                                  Result_Text %<<% Lower_Quantification_Limit ~ "Present Below Quantification Limit",
+                                                  TRUE ~ "Detected And Quantified"),
+           Result_Comment = case_when(Result_Text %<<% Method_Detection_Limit
+                                      ~ paste0("Lab reported a value of ", Result_Text, " which was below the MDL;"),
+                                      Result_Text %<<% Lower_Quantification_Limit
+                                      ~ paste0("Lab reported a value of ", Result_Text, " which was below the LQL;"),
+                                      TRUE ~ NA),
+           Result_Text = if_else(Result_Detection_Condition == "Detected And Quantified", Result_Text, NA),
            Result_Unit = FinalValueUnits,
-           Result_Qualifier = case_when(Result_Text %<=% Lower_Quantification_Limit ~ "J-R",
-                                        !is.na(Flag_Equis) ~ Flag_Equis,
-                                        TRUE ~ NA),
+           Result_Qualifier = NA,
            Result_Status = "Pre-Cert",
-           Result_Type = if_else(Result_Qualifier == "J-R", "Estimated", "Actual", missing = "Actual"),
+           Result_Type = "Actual",
            Upper_Quantification_Limit = NA,
            Limit_Comment = "Detection Limit Type = MDL",
-           Result_Comment = "",
            Temperature_Basis = NA,
            Statistical_Basis = NA,
            Time_Basis = NA,
@@ -621,7 +634,7 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
                            `Analysis Method` == Analysis_Method)) %>%
     mutate(Analytical_Method_ID = EQuIS_Method,
            Analytical_Remark = NA,
-           Lab_ID = "TESTAMC_AZ",
+           Lab_ID = "EUROFINS_DEN",
            Lab_Remark_Code = NA,
            Analysis_Start_Date = format(mdy_hm(`Analysis Date`), "%Y%m%d"),
            Analysis_Start_Time = format(mdy_hm(`Analysis Date`), "%H:%M:%S"),
@@ -684,6 +697,73 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
            Logger_Percent_Error = NA,
            Analytical_Method_ID_Context = NA,
            Predicted_Result = NA) %>%
+    select(-Medium, -Group) %>%
+    flag_replicates(activities, "Test America", dbo$units) %>%
+    flag_blanks(activities) %>%
+    flag_tot_vs_dissolved(activities,
+                          dissolved_characteristic_name = c("Arsenic",
+                                                            "Barium",
+                                                            "Cadmium",
+                                                            "Copper",
+                                                            "Lead",
+                                                            "Selenium",
+                                                            "Silver",
+                                                            "Zinc"),
+                          dissolved_filtered_fraction = c("Dissolved",
+                                                          "Dissolved",
+                                                          "Dissolved",
+                                                          "Dissolved",
+                                                          "Dissolved",
+                                                          "Dissolved",
+                                                          "Dissolved",
+                                                          "Dissolved"),
+                          total_characteristic_name = c("Arsenic",
+                                                        "Barium",
+                                                        "Cadmium",
+                                                        "Copper",
+                                                        "Lead",
+                                                        "Selenium",
+                                                        "Silver",
+                                                        "Zinc"),
+                          total_filtered_fraction = c("Total",
+                                                      "Total",
+                                                      "Total",
+                                                      "Total",
+                                                      "Total",
+                                                      "Total",
+                                                      "Total",
+                                                      "Total")) %>%
+    attach_ta_flags(dbo$flags, qualifiers) %>%
+    mutate(Result_Qualifier = case_when(Blank_Flag != "" ~ "FBK",
+                                        FBK != "" ~ "FBK",
+                                        Dup_Flag != "" ~ "SUS",
+                                        Tot_vs_Dissolved_Flag != "" ~ "SUS",
+                                        `4` != "" ~ "4", 
+                                        `"` != "" ~ '"', 
+                                        HIB != "" ~ "HIB", 
+                                        IQCOL != "" ~ "IQCOL", 
+                                        HICC != "" ~ "HICC",
+                                        SDROL != "" ~ "SDROL", 
+                                        `SD%EL` != "" ~ "SD%EL", 
+                                        `SD%SS` != "" ~ "SD%SS",
+                                        H != "" ~ "H", 
+                                        TRUE ~ NA),
+           Reportable_Result = "Y") %>%
+    mutate(Result_Comment = paste0(if_else(is.na(Result_Comment), "", paste0(Result_Comment, " ")),
+                                   Blank_Flag, 
+                                   FBK,
+                                   Dup_Flag,
+                                   Tot_vs_Dissolved_Flag, 
+                                   `4`,
+                                   `"`, 
+                                   HIB, 
+                                   IQCOL,
+                                   HICC,
+                                   SDROL, 
+                                   `SD%EL`,
+                                   `SD%SS`,
+                                   H)) %>%
+    mutate(Result_Comment = if_else(Result_Comment == "", NA, str_trim(Result_Comment))) %>%
     select(`#Org_Code`, Activity_ID, Characteristic_Name, Method_Speciation,  # ORDER TO MATCH EDD
            Filtered_Fraction, Result_Detection_Condition, Result_Text,
            Result_Unit, Result_Qualifier, Result_Status, Result_Type, Result_Comment,
@@ -777,23 +857,30 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
 #'           overwrite = TRUE)
 #' }
 write_edd <- function(deliverable_file_paths, db_file_path, pre_2020, lab, format = c("xlsx", "csv"), destination_folder = "./", 
-                      overwrite = FALSE, qualifiers = imdccal::qualifiers, concat = FALSE) {
+                      overwrite = FALSE, qualifiers = imdccal::equis_qualifiers, concat = FALSE) {
   format <- match.arg(format)
   destination_folder <- normalizePath(destination_folder, winslash = .Platform$file.sep)
   
   # Call function to format EDD
   if (lab == "CCAL") {
-    all_data <- format_edd_ccal(deliverable_file_paths, db_file_path, pre_2020, qualifiers, concat)
+    all_data <- format_edd_ccal(deliverable_file_paths, db_file_path, pre_2020, concat)
   }
   else if (lab == "Test America") {
-    all_data <- format_edd_test_america(deliverable_file_paths, db_file_path, pre_2020, qualifiers)
+    all_data <- list(format_edd_test_america(deliverable_file_paths, db_file_path, pre_2020, qualifiers))
+    
+    year <- all_data[[1]]$Activities %>%
+      mutate(Year = substring(Activity_Start_Date, 1, 4)) %>%
+      distinct(Year) %>%
+      pull(Year)
+    
+    names(all_data) <- paste0("ROMN_TestAmerica_", year)
   }
   else {
     stop("Invalid lab argument for write_edd(). Valid inputs are 'CCAL' and 'Test America'")
   }
   
   # Call function from imdccal package to write EDD
-  write_data(all_data, format, destination_folder, overwrite, suffix = "_edd", num_tables = 4)
+  write_ccal(all_data, format, destination_folder, overwrite, suffix = "_edd", num_tables = 4)
   
   return(invisible(all_data))
 }
@@ -801,14 +888,16 @@ write_edd <- function(deliverable_file_paths, db_file_path, pre_2020, lab, forma
 #' Identify observations to flag depending on relative percent difference between samples and their field duplicates
 #'
 #' @param results An appropriately formatted results table. Specifically, the following fields are required:
-#' Activity_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Detection_Condition, Method_Detection_Limit, Analysis_Start_Date.
+#' Activity_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Detection_Condition, Method_Detection_Limit, 
+#' Lower_Quantification_Limit, Analysis_Start_Date.
 #' @param activities An appropriately formatted activities table. Specifically, the following fields are required:
-#' Activity_ID, Activity_Type, Additional_Location_Info.
+#' Activity_ID, Activity_Type, Additional_Location_Info, Medium.
+#' @param lab Either "CCAL" or "Test America"
 #' @param limits Table with detection limits. By default, uses the version in the imdccal package. User-defined versions must have the same columns.
 #'
 #' @return The results table with the addition of a "Dup_Flag" column of character type which can be further
 #' processed to apply quality control flags and create associated descriptive fields.
-flag_replicates <- function(results, activities, limits = imdccal::limits) {
+flag_replicates <- function(results, activities, lab, limits = imdccal::detection_limits) {
   
   # Identify field duplicates
   dups <- results %>%
@@ -825,42 +914,57 @@ flag_replicates <- function(results, activities, limits = imdccal::limits) {
   joined <- dups %>%
     inner_join(regs %>%
                  select(Activity_ID, Additional_Location_Info, Characteristic_Name, Filtered_Fraction,
-                        Result_Text, Result_Detection_Condition, Method_Detection_Limit),
+                        Medium, Result_Text, Result_Detection_Condition, Method_Detection_Limit, Lower_Quantification_Limit),
                by = c("EventName_Common" = "Additional_Location_Info", "Characteristic_Name", 
-                      "Filtered_Fraction"),
-               suffix = c("_Dup", "_Reg")) # include a helpful suffix
+                      "Filtered_Fraction", "Medium"),
+               suffix = c("_Dup", "_Reg")) %>% # include a helpful suffix
+    mutate(RPD = abs( (Result_Text_Reg - Result_Text_Dup) / ((Result_Text_Reg + Result_Text_Dup)/2) * 100 ))
   
-  # Calculate RPD
-  joined <- joined %>%
-    mutate(RPD = abs( (Result_Text_Reg - Result_Text_Dup) / ((Result_Text_Reg + Result_Text_Dup)/2) * 100 ),
-           RPD = case_when(is.na(RPD) & (Result_Detection_Condition_Dup == Result_Detection_Condition_Reg) 
-                           ~ 0,  # fix NA issues for non-detects with same detection condition
-                           is.na(RPD) & is.na(Result_Text_Reg) & (Result_Text_Dup<=2*Method_Detection_Limit_Dup)
-                           ~ 0,  # fix NA issues for non-detect, diff detection condition, w/in 2x MDL
-                           is.na(RPD) & is.na(Result_Text_Dup) & (Result_Text_Reg<= 2*Method_Detection_Limit_Reg)
-                           ~ 0,  # fix NA issues for non-detect, diff detection condition, w/in 2x MDL
-                           TRUE ~ RPD)) # everything else remains the same
+  # Join group into table
+  if (lab == "CCAL") {
+    joined <- joined %>%
+      left_join(limits %>% select(Characteristic_Name, Filtered_Fraction, Group, StartDate, EndDate),
+                by = dplyr::join_by(Characteristic_Name, 
+                                    Filtered_Fraction,
+                                    Analysis_Start_Date >= StartDate,
+                                    Analysis_Start_Date <= EndDate)) 
+  } else if (lab == "Test America") {
+    joined <- joined %>%
+      left_join(limits %>% distinct(ParameterName, SampleFraction, Group),
+                by = dplyr::join_by(Characteristic_Name == ParameterName, 
+                                    Filtered_Fraction == SampleFraction)) 
+  }
+  else {
+    stop("Invalid lab argument for flag_replicates(). Valid inputs are 'CCAL' and 'Test America'")
+  }
+  
+  if (NA %in% joined$Group) {
+    stop(paste0("At least one analyte in the deliverable does not have a defined Group.", 
+         " Please define all groups (metal/nutrient/major) in the crosswalk for the relevant lab."))
+  }
   
   # Determine if RPD is less than group specific threshold for flagging purposes
-  joined <- joined %>%
-    left_join(limits %>% select(Characteristic_Name, Filtered_Fraction, Group, StartDate, EndDate),
-              by = dplyr::join_by(Characteristic_Name, 
-                                  Filtered_Fraction,
-                                  Analysis_Start_Date >= StartDate,
-                                  Analysis_Start_Date <= EndDate)) %>%
-    mutate(RPD_Test = case_when(RPD <= 15.0 & Group == "Major" ~ 0,
-                                RPD <= 30.0 & Group == "Metal" ~ 0,
-                                RPD <= 30.0 & Group == "Nutrient" ~ 0,
-                                is.na(RPD) &
-                                  ((is.na(Result_Text_Dup) & Result_Text_Reg > 2*Method_Detection_Limit_Reg) |
-                                     (is.na(Result_Text_Reg) & Result_Text_Dup > 2*Method_Detection_Limit_Dup))
-                                ~ 1,
-                                is.na(RPD) ~ NA,
-                                TRUE ~ 1))
+  joined <- joined %>% 
+    mutate(Dup_Flag = case_when(Result_Detection_Condition_Reg == "Detected And Quantified" & Result_Detection_Condition_Dup == "Detected And Quantified" &
+                                  RPD > 15.0 & Group == "Major" ~ 
+                                  "SUS: Result value is defined as suspect by data owner because replicate samples exceed the 15% relative percent difference permitted for major constituents; ",
+                                Result_Detection_Condition_Reg == "Detected And Quantified" & Result_Detection_Condition_Dup == "Detected And Quantified" &
+                                  RPD > 30.0 & Group == "Metal" ~ 
+                                  "SUS: Result value is defined as suspect by data owner because replicate samples exceed the 30% relative percent difference permitted for metals; ",
+                                Result_Detection_Condition_Reg == "Detected And Quantified" & Result_Detection_Condition_Dup == "Detected And Quantified" &
+                                  RPD > 30.0 & Group == "Nutrient" ~ 
+                                  "SUS: Result value is defined as suspect by data owner because replicate samples exceed the 30% relative percent difference permitted for nutrients; ",
+                                is.na(RPD) & ((is.na(Result_Text_Dup) & Result_Text_Reg > 2*Lower_Quantification_Limit_Reg) |
+                                                (is.na(Result_Text_Reg) & Result_Text_Dup > 2*Lower_Quantification_Limit_Dup)) ~ 
+                                  "SUS: Result value is defined as suspect by data owner because either the replicate or the sample is not quantified, but the other is greater than twice the lower quantitation limit; ",
+                                Result_Detection_Condition_Reg == "Not Detected" & Result_Detection_Condition_Dup == "Present Below Quantification Limit" |
+                                  Result_Detection_Condition_Reg == "Present Below Quantification Limit" & Result_Detection_Condition_Dup == "Not Detected" ~
+                                  "SUS: Result value is defined as suspect by data owner because either the replicate or the sample concentration is not detected, but the other is detected above method detection limit though not quantified; ",
+                                TRUE ~ ""))
   
   # Pivot longer (one row per observation)
   pivoted <- joined %>%
-    select(Activity_ID_Dup, Activity_ID_Reg, Characteristic_Name, Filtered_Fraction, Group, RPD_Test) %>%
+    select(Activity_ID_Dup, Activity_ID_Reg, Characteristic_Name, Filtered_Fraction, Group, Dup_Flag) %>%
     pivot_longer(cols = c(Activity_ID_Dup, Activity_ID_Reg)) %>%
     rename("Activity_ID" = "value") %>%
     select(-name)
@@ -869,18 +973,15 @@ flag_replicates <- function(results, activities, limits = imdccal::limits) {
   results <- results %>%
     left_join(pivoted,
               by = c("Activity_ID", "Characteristic_Name", "Filtered_Fraction")) %>%
-    mutate(Dup_Flag = case_when(RPD_Test == 1 & Group == "Major" ~ "SUS (because replicate samples exceed the 15% relative percent difference permitted for major constituents), ",
-                                RPD_Test == 1 & Group == "Metal" ~ "SUS (because replicate samples exceed the 30% relative percent difference permitted for metals), ",
-                                RPD_Test == 1 & Group == "Nutrient" ~ "SUS (because replicate samples exceed the 30% relative percent difference permitted for nutrients), ",
-                                TRUE ~ "")) %>%
-    select(-Group, -RPD_Test)
+    mutate(Dup_Flag = if_else(is.na(Dup_Flag), "", Dup_Flag)) %>%
+    select(-Group)
   return(results)
 }
 
 #' Identify observations to flag depending on the detection condition and magnitudes of samples and their field blanks 
 #'
 #' @param results An appropriately formatted results table. Specifically, the following fields are required:
-#' Activity_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Detection_Condition, Method_Detection_Limit.
+#' Activity_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Detection_Condition.
 #' @param activities An appropriately formatted activities table. Specifically, the following fields are required:
 #' Activity_ID, Activity_Type, Additional_Location_Info.
 #'
@@ -902,24 +1003,30 @@ flag_blanks <- function(results, activities) {
   # Join regs and blanks
   joined <- blanks %>%
     inner_join(regs %>%
-                 select(Activity_ID, Additional_Location_Info, Characteristic_Name, Filtered_Fraction,
-                        Activity_Type, Result_Text, Result_Detection_Condition, Method_Detection_Limit),
+                 select(Activity_ID, Additional_Location_Info, Characteristic_Name, Filtered_Fraction, Medium,
+                        Activity_Type, Result_Text, Result_Detection_Condition),
                by = c("EventName_Common" = "Additional_Location_Info", "Characteristic_Name", 
-                      "Filtered_Fraction"),
+                      "Filtered_Fraction", "Medium"),
                suffix = c("_Blank", "_Reg")) # include a helpful suffix
   
   # Deal with blanks that detected analytes
   joined <- joined %>%
-    mutate(Blank_Detected = !is.na(Result_Text_Blank),
-           RegLT2x = (Result_Text_Reg < 2*Result_Text_Blank) & !is.na(Result_Text_Blank),
-           RegBT2to5x = (Result_Text_Reg >= 2*Result_Text_Blank) &
-             (Result_Text_Reg < 5*Result_Text_Blank) &
-             !is.na(Result_Text_Blank),
-           RegGT5x = Result_Text_Reg >= 5*Result_Text_Blank & !is.na(Result_Text_Blank))
+    mutate(Blank_Flag = case_when(Result_Detection_Condition_Blank == "Present Below Quantification Limit" ~
+                                    "FBK: Analyte detected in field blank but not quantified as it is less than the Lower Quantification Limit; ",
+                                  Result_Detection_Condition_Blank == "Detected And Quantified" & 
+                                    Result_Detection_Condition_Reg != "Detected And Quantified" ~ 
+                                    "FBK: Analyte detected and quantified  in field blank but not quantified in environmental sample; ",
+                                  Result_Detection_Condition_Blank == "Detected And Quantified" & 
+                                    Result_Text_Reg < 5*Result_Text_Blank ~
+                                    "FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; ",
+                                  Result_Detection_Condition_Blank == "Detected And Quantified" &
+                                    Result_Text_Reg >= 5*Result_Text_Blank ~
+                                    "FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration at least 5 times the field blank's concentration; ",
+                                  TRUE ~ ""))
   
   # Pivot longer (one row per observation)
   pivoted <- joined %>%
-    select(Activity_ID_Blank, Activity_ID_Reg, Characteristic_Name, Filtered_Fraction, Blank_Detected, RegLT2x, RegBT2to5x, RegGT5x) %>%
+    select(Activity_ID_Blank, Activity_ID_Reg, Characteristic_Name, Filtered_Fraction, Blank_Flag) %>%
     pivot_longer(cols = c(Activity_ID_Blank, Activity_ID_Reg)) %>%
     rename("Activity_ID" = "value",
            "Type" = "name")
@@ -928,16 +1035,8 @@ flag_blanks <- function(results, activities) {
   results <- results %>%
     left_join(pivoted,
               by = c("Activity_ID", "Characteristic_Name", "Filtered_Fraction")) %>%
-    mutate(Blank_Detected = if_else(is.na(Blank_Detected), FALSE, Blank_Detected),
-           RegLT2x = if_else(is.na(RegLT2x), FALSE, RegLT2x),
-           RegBT2to5x = if_else(is.na(RegBT2to5x), FALSE, RegBT2to5x),
-           RegGT5x = if_else(is.na(RegGT5x), FALSE, RegGT5x),
-           Blank_Flag = case_when(Blank_Detected & RegLT2x ~ "FBK (Environmental sample less than twice the blank's level), ",
-                                  Blank_Detected & RegBT2to5x ~ "FBK (Environmental sample at least twice but less than 5 times the blank's level), ",
-                                  Blank_Detected & RegGT5x ~ "FBK (Environmental sample at least 5 times the blank's level), ",
-                                  Blank_Detected ~ "FBK (Analyte detected in blank but not detected in environmental sample), ",
-                                  TRUE ~ "")) %>%
-    select(-c(Blank_Detected, RegLT2x, RegBT2to5x, RegGT5x, Type))
+    mutate(Blank_Flag = if_else(is.na(Blank_Flag), "", Blank_Flag)) %>%
+    select(-Type)
   return(results)
 }
 
@@ -945,6 +1044,8 @@ flag_blanks <- function(results, activities) {
 #'
 #' @param results An appropriately formatted results table. Specifically, the following fields are required:
 #' Activity_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Method_Detection_Limit.
+#' @param activities An appropriately formatted activities table. Specifically, the following fields are required:
+#' Activity_ID, Medium.
 #' @param dissolved_characteristic_name The characteristic names of the dissolved fractions to be compared.
 #' Must be a character vector where the i-th element corresponds to the i-th element of dissolved_filtered_fraction, 
 #' total_characteristic_name, and total_filtered_fraction.
@@ -960,8 +1061,15 @@ flag_blanks <- function(results, activities) {
 #'
 #' @return The results table with the addition of a "Tot_vs_Dissolved_Flag" column of character type which can be further
 #' processed to apply quality control flags and create associated descriptive fields.
-flag_tot_vs_dissolved <- function(results, dissolved_characteristic_name, dissolved_filtered_fraction,
+flag_tot_vs_dissolved <- function(results, activities, dissolved_characteristic_name, dissolved_filtered_fraction,
                                   total_characteristic_name, total_filtered_fraction) {
+  # Join results and activities
+  results <- results %>%
+    left_join(activities %>% 
+                select(Activity_ID, Medium) %>%
+                rename(Medium_in_function = Medium),
+              by = "Activity_ID")
+  
   # Create empty data tables with the same columns as results
   dissolved <- results[0,]
   total <- results[0,]
@@ -971,11 +1079,13 @@ flag_tot_vs_dissolved <- function(results, dissolved_characteristic_name, dissol
     dissolved <- bind_rows(dissolved, 
                            results %>%
                              filter(Characteristic_Name == dissolved_characteristic_name[i],
-                                    Filtered_Fraction == dissolved_filtered_fraction[i]))
+                                    Filtered_Fraction == dissolved_filtered_fraction[i],
+                                    Medium_in_function == "Water"))
     total <- bind_rows(total,
                        results %>%
                          filter(Characteristic_Name == total_characteristic_name[i],
-                                Filtered_Fraction == total_filtered_fraction[i])) 
+                                Filtered_Fraction == total_filtered_fraction[i],
+                                Medium_in_function == "Water")) 
   }
   
   # Handle error where there is no match between analytes intended to be compared
@@ -986,66 +1096,153 @@ flag_tot_vs_dissolved <- function(results, dissolved_characteristic_name, dissol
   
   # Column bind the total to the dissolved
   # We column bind instead of joining due to some analytes (orthophosphate) needing multiple comparisons
+  # Then we raise the flags using a case when to consider different possibilities
   compare <- bind_cols(dissolved %>%
                          rename_with(~ paste0("dissolved_", .x)), 
                        total %>%
                          rename_with(~ paste0("total_", .x)))
   
-  # Assign NFNSU and NFNSI flags
   compare <- compare %>%
-    # Calculate difference between dissolved and total fractions, assign flags
-    mutate(diff = dissolved_Result_Text - total_Result_Text,
-           Tot_vs_Dissolved_Flag = case_when(diff %>>% total_Method_Detection_Limit ~ "NFNSU, ",
-                                             diff %>>% 0 ~ "NFNSI, ",
-                                             TRUE ~ "")) %>%
-    # Deal with the possibility of multiple comparisons for one dissolved analyte 
-    group_by(dissolved_Activity_ID, dissolved_Characteristic_Name, 
-             dissolved_Filtered_Fraction) %>%
-    summarize(Tot_vs_Dissolved_Flag = paste(Tot_vs_Dissolved_Flag, collapse = ""),
-              .groups = 'drop') %>%
-    mutate(Tot_vs_Dissolved_Flag = if_else(str_detect(Tot_vs_Dissolved_Flag, "NFNSU, "), 
-                                           "NFNSU, ", Tot_vs_Dissolved_Flag)) %>%
-    select(dissolved_Activity_ID, dissolved_Characteristic_Name, dissolved_Filtered_Fraction,
-           Tot_vs_Dissolved_Flag)
+    mutate(Tot_vs_Dissolved_Flag = case_when(dissolved_Result_Text - total_Result_Text > total_Lower_Quantification_Limit ~
+                                               paste0("SUS: Result value is defined as suspect by data owner due to comparison of filtered fractions. Dissolved fraction (",
+                                                      dissolved_Characteristic_Name, 
+                                                      ", ",
+                                                      dissolved_Filtered_Fraction,
+                                                      ") was found to be greater than the total fraction (",
+                                                      total_Characteristic_Name,
+                                                      ", ",
+                                                      total_Filtered_Fraction,
+                                                      ") plus the lower quantitation limit; "),
+                                             dissolved_Result_Detection_Condition == "Detected And Quantified" &
+                                               total_Result_Detection_Condition != "Detected And Quantified" ~
+                                               paste0("SUS: Result value is defined as suspect by data owner due to comparison of filtered fractions. Dissolved fraction (",
+                                                      dissolved_Characteristic_Name, 
+                                                      ", ",
+                                                      dissolved_Filtered_Fraction,
+                                                      ") was detected and quantified but total fraction (",
+                                                      total_Characteristic_Name,
+                                                      ", ",
+                                                      total_Filtered_Fraction,
+                                                      ") was not quantified; "),
+                                             dissolved_Result_Detection_Condition == "Present Below Quantification Limit" &
+                                               total_Result_Detection_Condition == "Not Detected" ~
+                                               paste0("SUS: Result value is defined as suspect by data owner due to comparison of filtered fractions. Dissolved fraction (",
+                                                      dissolved_Characteristic_Name, 
+                                                      ", ",
+                                                      dissolved_Filtered_Fraction,
+                                                      ") was present below lower quantitation limit, but total fraction (",
+                                                      total_Characteristic_Name,
+                                                      ", ",
+                                                      total_Filtered_Fraction,
+                                                      ") was not detected; "),
+                                             TRUE ~ ""))
   
-  # Join flag information into results and handle NAs
+  # Select the relevant total columns and qc note
+  total <- compare %>%
+    select(total_Activity_ID,
+           total_Characteristic_Name, 
+           total_Filtered_Fraction, 
+           total_Medium_in_function,
+           Tot_vs_Dissolved_Flag) %>%
+    rename(Activity_ID = total_Activity_ID,
+           Characteristic_Name = total_Characteristic_Name,
+           Filtered_Fraction = total_Filtered_Fraction,
+           Medium = total_Medium_in_function)
+  
+  # Select the relevant dissolved columns and qc note
+  dissolved <- compare %>%
+    select(dissolved_Activity_ID, 
+           dissolved_Characteristic_Name, 
+           dissolved_Filtered_Fraction, 
+           dissolved_Medium_in_function,
+           Tot_vs_Dissolved_Flag) %>%
+    rename(Activity_ID = dissolved_Activity_ID,
+           Characteristic_Name = dissolved_Characteristic_Name,
+           Filtered_Fraction = dissolved_Filtered_Fraction,
+           Medium = dissolved_Medium_in_function)
+  
+  # Row bind the total and dissolved together, use a group by + summarize to combine comments for repeat analytes (total phosphorus, dissolved phosphorus, orthophosphate)
+  longer <- total %>%
+    bind_rows(dissolved) %>%
+    group_by(Activity_ID, 
+             Characteristic_Name, 
+             Filtered_Fraction,
+             Medium) %>%
+    summarize(Tot_vs_Dissolved_Flag = paste(Tot_vs_Dissolved_Flag, collapse = ""),
+              .groups = 'drop')
+  
+  # Join flag information into results, the flag description, and handle NAs
   results <- results %>%
-    left_join(compare,
-              by = c("Activity_ID" = "dissolved_Activity_ID",
-                     "Characteristic_Name" = "dissolved_Characteristic_Name", 
-                     "Filtered_Fraction" = "dissolved_Filtered_Fraction")) %>%
-    mutate(Tot_vs_Dissolved_Flag = if_else(is.na(Tot_vs_Dissolved_Flag), "", Tot_vs_Dissolved_Flag))
+    left_join(longer,
+              by = c("Activity_ID" = "Activity_ID",
+                     "Characteristic_Name" = "Characteristic_Name", 
+                     "Filtered_Fraction" = "Filtered_Fraction",
+                     "Medium_in_function" = "Medium")) %>%
+    mutate(Tot_vs_Dissolved_Flag = if_else(is.na(Tot_vs_Dissolved_Flag), "", Tot_vs_Dissolved_Flag)) %>%
+    select(-Medium_in_function)
+    
   return(results)
 }
 
-#' Conduct additional processing/censorship of data to prepare for use in ROMN's analyses.
-#'
-#' @param results The results table from WQP including at least the following columns:
-#' Activity_ID, Result_Comment, Result_Detection_Condition, Result_Text.
-#' @param activities The activities table from WQP including at least the following columns:
-#' Activity_ID, Activity_Type
-#'
-#' @return The results table with modifications to Result_Text and Result_Detection_Condition that are required for ROMN's analyses.
-#' When a field blank has a detected concentration, this function changes the corresponding environmental sample's Result_Detection_Condition 
-#' to "Not Detected" if the environmental sample's concentration is less than twice the blank's and "Detected Not Quantified" if it is 2-5 times the blank's.
-#' It also sets the Result_Detection_Condition to "Detected Not Quantified" for observations with the "NFNSU" flag, which occurs when a 
-#' dissolved fraction exceeds the concentration of its corresponding total fraction by more than the total fraction's MDL.
-#' Finally, the Result_Text is changed to NA for any observations where the Result_Detection_Condition is not "Detected And Quantified".
-censor_for_analysis <- function(results, activities) {
+attach_ta_flags <- function(results, ta_flags, qualifiers = imdccal::equis_qualifiers) {
+  # Filter for rows with a Test America flag
+  # Expand so each TA flag is on its own row
+  # Join in EQuIS flags
+  results_with_flags <- results %>%
+    select(Activity_ID, Characteristic_Name, Filtered_Fraction, Source_Flags) %>%
+    filter(!is.na(Source_Flags)) %>%
+    separate_rows(Source_Flags, sep = " ") %>%
+    left_join(ta_flags %>%
+                select(TA_flag, EQuIS_flag),
+              by = join_by(Source_Flags == TA_flag)) 
+  
+  # Filter for any NA EQuIS flags 
+  undefined_flags <- results_with_flags %>%
+    filter(is.na(EQuIS_flag)) %>%
+    distinct(Source_Flags)
+  
+  # Stop process and request the user define the new flag
+  if(nrow(undefined_flags) > 0) {
+    stop("Undefined flag(s)! Define the translation from Test America flag(s) ", undefined_flags, 
+         " to valid EQuIS flag(s) in the flag crosswalk, incorporate them in the flag hierarchy, then try again") 
+    # give them information as to where that flag crosswalk is stored ???
+  }
+  
+  # Expand so each EQuIS flag is on its own row
+  # Pivot wider to create a column for each flag
+  results_with_flags <- results_with_flags %>%
+    separate_rows(EQuIS_flag, sep = ", ") %>%
+    mutate(value = 1) %>%
+    select(-Source_Flags) %>%
+    pivot_wider(names_from = EQuIS_flag, values_from = value, values_fn = mean)
+  
+  # Join the flags to the results table
   results <- results %>%
-    left_join(activities %>%
-                rename_with(~ paste0("activities_", .x)),
-              by = c("Activity_ID" = "activities_Activity_ID")) %>%
-    mutate(Result_Detection_Condition = case_when(activities_Activity_Type == "Sample-Routine" &
-                                                    str_detect(Result_Comment, "Environmental sample less than twice the blank's level") ~ 
-                                                    "Not Detected",
-                                                  str_detect(Result_Comment, "NFNSU") ~ 
-                                                    "Detected Not Quantified",
-                                                  activities_Activity_Type == "Sample-Routine" &
-                                                    str_detect(Result_Comment, "Environmental sample at least twice but less than 5 times the blank's level") ~ 
-                                                    "Detected Not Quantified",
-                                                  TRUE ~ Result_Detection_Condition),
-           Result_Text = if_else(Result_Detection_Condition == "Detected And Quantified", Result_Text, NA)) %>%
-    select(-starts_with("activities_"))
+    left_join(results_with_flags,
+              by = c("Activity_ID", "Characteristic_Name", "Filtered_Fraction")) %>%
+    mutate(across(-1:-ncol(results),
+                  function(x) {
+                    if_else(is.na(x), "", paste0(cur_column(), 
+                                                 ": ", 
+                                                 qualifiers %>%
+                                                   filter(lookup_code == cur_column()) %>%
+                                                   pull(remark),
+                                                 "; "))
+                  }))
+  
+  # Create a table with a column for each EQuIS flag, and one row with an empty string in each column
+  cols <- ta_flags %>%
+    select(EQuIS_flag) %>%
+    separate_rows(EQuIS_flag, sep = ", ") %>%
+    mutate(value = 0) %>%
+    pivot_wider(names_from = EQuIS_flag, values_from = value, values_fn = mean) %>%
+    mutate(across(everything(),  ~ ""))
+  
+  # Create a column for each column in cols that is not yet a column in results
+  results <- results %>%
+    add_column(!!!cols[!names(cols) %in% names(.)]) %>%
+    select(-`J-R`) %>% # remove J-R because we account for this ourselves
+    mutate(FBK = if_else(FBK == "", FBK, "FBK: According to lab, analyte detected in lab method blank; "))
+  
   return(results)
 }

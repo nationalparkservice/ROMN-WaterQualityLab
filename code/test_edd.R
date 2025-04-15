@@ -1,6 +1,10 @@
 # Function to compare tables from our historical EDDs and the new process in R
 same_table <- function(table_old, table_new, table_type) {
   
+  # drop deprecated columns from old EDD
+  table_old <- table_old %>%
+    select(-starts_with("Deprecated"))
+  
   # drop columns so that the two tables have the same columns
   table_new <- table_new %>%
     select(colnames(table_old))
@@ -40,14 +44,14 @@ same_table <- function(table_old, table_new, table_type) {
     table_new <- table_new %>%
       mutate(Activity_ID = toupper(Activity_ID),
              Characteristic_Name = toupper(Characteristic_Name)) %>%
-      arrange(Activity_ID, Characteristic_Name, Filtered_Fraction)
+      arrange(Activity_ID, Characteristic_Name, Filtered_Fraction, Lab_Batch_ID)
     
     table_old <- table_old %>%  
       mutate(Activity_ID = toupper(Activity_ID),
              Characteristic_Name = toupper(Characteristic_Name),
              Source_Flags = as.character(Source_Flags)) %>% # to match data type
       filter(Activity_ID %in% table_new$Activity_ID) %>%
-      arrange(Activity_ID, Characteristic_Name, Filtered_Fraction)
+      arrange(Activity_ID, Characteristic_Name, Filtered_Fraction, Lab_Batch_ID)
   }
   else {
     stop("Invalid table_type")
@@ -134,7 +138,6 @@ same_table <- function(table_old, table_new, table_type) {
   }
   return (list("test" = table_test, "old" = table_old, "new" = table_new))
 }
-
 
 # function to wrap all of the comparisons for an EDD into one place
 compare_edd <- function(edd_old_file_path, edd_new) {

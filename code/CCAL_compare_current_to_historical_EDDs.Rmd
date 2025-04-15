@@ -45,11 +45,11 @@ By default we store the EDD in the R environment, but you may uncomment code bel
 ```{r}
 # Create EDD and store in environment
 edd_2019 <- format_edd_ccal(ccal_file_paths = here("data/raw/ROMN_103119.xlsx"),
-                       db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
-                       pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"))
+                            db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
+                            pre_2020 = here("data/EDD_examples/ROMN_SEI_in_EQuIS.xlsx"))
 
 # Write the EDD from R environment to file
-# write_data(all_data = edd_2019,
+# write_ccal(all_data = edd_2019,
 #            format = "xlsx",
 #            destination_folder = here("data/output"),
 #            overwrite = TRUE,
@@ -68,21 +68,21 @@ edd_2019 <- format_edd_ccal(ccal_file_paths = here("data/raw/ROMN_103119.xlsx"),
 
 Here, we create a single table that contains enough information to understand the results of the QC process without inspecting the full 2019 EDD across multiple tables.
 Then we filter for any results that have comments from CCAL that require manual review.
-If we were actually creating and submitting this EDD, the ecologist would need to review the comments in the Source_Flags column to determine whether additional flags are needed. 
+If we were actually creating and submitting this EDD, the ecologist would need to review the lab comments in the Result_Comment column to determine whether additional flags are needed. 
 
 ```{r}
 # Create data that is easier to review
 ROMN_103119_edd_snapshot <-  edd_2019$ROMN_103119.xlsx$Results %>%
   left_join(edd_2019$ROMN_103119.xlsx$Activities, by = "Activity_ID") %>%
-  select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Detection_Condition,
-         Result_Qualifier, Method_Detection_Limit, Lower_Quantification_Limit, Source_Flags, Result_Comment)
+  select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, Filtered_Fraction, Result_Text,
+         Result_Detection_Condition, Result_Qualifier, Method_Detection_Limit, Lower_Quantification_Limit, Result_Comment)
 
 # Optionally, write data to excel file
 # write.xlsx(ROMN_103119_edd_snapshot, here("data/output/ROMN_103119_edd_snapshot.xlsx"))
 
-# Apply flags manually based on Source_Flags
+# Apply flags manually based on Result_Comment (look for comments containing "Note from lab")
 ROMN_103119_edd_snapshot %>%
-  filter(!is.na(Source_Flags))
+  filter(str_detect(Result_Comment, "Note from lab"))
 ```
 
 Finally, we display any other comments about the data that have not been automatically attached to relevant rows.
@@ -90,9 +90,9 @@ Again, if we were actually submitting this EDD the ecologist may manually apply 
 
 ```{r}
 # Apply flags manually based on these descriptions
-# Sometimes these comments have no lab numbers associated with them so I did not attempt to automate their inclusion in Source_Flags
+# Sometimes these comments have no lab numbers associated with them so I did not attempt to automate their inclusion in Result_Comment
 # If output is NA, there are no other comments from CCAL to consider
-getCCALData(here("data/raw/ROMN_103119.xlsx"))$ROMN_103119.xlsx$metadata$quest_results_comments
+read_ccal(here("data/raw/ROMN_103119.xlsx"))$ROMN_103119.xlsx$metadata$quest_results_comments
 ```
 
 # Compare our new and historical EDDs for 2019 data
@@ -160,36 +160,31 @@ Below is my summary of the differences between the EDDs.
     - Activity_Comment (37): this is just here because ROMN_SEI_in_EQuIS.xlsx recorded NA as "NULL"
 
 - Results:
-    - Result_Detection_Condition (15): see code below. 13 of these differences occur because we no longer change the Result_Detection_Condition to Not Detected when the NFNSU flag is raised. The other two erroneously were set to Not Detected despite concentrations greater than Alkalinity's MDL of 0.2.
-    - Result_Text (55): see code below. All differences are due to different values of alkalinity or the same issues identified with Result_Detection_Conditino. I'm not sure why the old EDD has different alkalinity values as ours appear to match those in the raw data.
-    - Result_Qualifier (180): see code below. All discrepancies are due to differences in methodologies, mistakes in old EDD or old CCAL deliverable, or the absence of manual assignment of "H" flag in new EDD. 
+    - Result_Detection_Condition (101): see code below. Most differences occur because we now set the detection condition to "Present Below Quantification Limit" when a value is less than the LQL, but greater than or equal to the MDL. We also no longer change the Result_Detection_Condition to Not Detected when the NFNSU flag is raised. The other two erroneously were set to Not Detected despite concentrations greater than Alkalinity's MDL of 0.2.
+    - Result_Text (119): see code below. All differences are due to different values of alkalinity or the same issues identified with Result_Detection_Conditino. I'm not sure why the old EDD has different alkalinity values as ours appear to match those in the raw data.
+    - **Result_Qualifier** (180 --> 296): see code below. All discrepancies are due to differences in methodologies, mistakes in old EDD or old CCAL deliverable, or the absence of manual assignment of "H" flag in new EDD. 
     - Result_Status (630): in old data, all are "Accepted" rather than "Pre-Cert"
-    - Result_Type (89): in new data, we set this to "Estimated" every time we raised the "J-R" flag
-    - Result_Comment (289): we changed the structure of this field
+    - Result_Comment (347): we changed the structure of this field
     - Lower_Quantification_Limit (90): in new code, we always include this instead of sometimes leaving it as NA
     - Analytical_Method_ID (180): these have simply changed and we are using the current version
     - Analysis_Start_Date (630): new code uses analysis start date rather than activity start date
     - Analysis_Start_Time (630): new code sets to NA rather than saying everything started at midnight
     - Lab_Reported_Result (141): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
     - Reportable_Result (137): new code always sets this to 'Y'
-    - Source_Flags (84): we changed the structure of this field
 
-In the next two code chunks, we print out two tables that can be used to inspect the differences in **Result_Detection_Condition** more carefully.
+Here, we print out a table that can be used to inspect the differences in **Result_Detection_Condition** more carefully.
 
 ```{r}
 bind_cols(old_qualifier = compare_103119$results$old$Result_Qualifier,
           old_detection_condition = compare_103119$results$old$Result_Detection_Condition,
           new_qualifier = compare_103119$results$new$Result_Qualifier,
-          new_detection_condition = compare_103119$results$new$Result_Detection_Condition) %>%
+          new_detection_condition = compare_103119$results$new$Result_Detection_Condition,
+          value = compare_103119$results$new$Lab_Reported_Result,
+          MDL = compare_103119$results$new$Method_Detection_Limit) %>%
   mutate(row_num = row_number()) %>%
   filter(old_detection_condition != new_detection_condition | 
-           xor(is.na(old_detection_condition), is.na(new_detection_condition)))
-```
-
-```{r}
-compare_103119$results$new %>%
-  select(Activity_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Qualifier) %>%
-  filter(row_number() %in% c(239, 533))
+           xor(is.na(old_detection_condition), is.na(new_detection_condition))) %>%
+  filter(!old_qualifier == "J-R")
 ```
 
 In the next two code chunks, we print out two tables that can be used to inspect the differences in **Result_Text** more carefully.
@@ -246,15 +241,15 @@ The historical EDDs for these deliverables have not yet been fully QC'd.
 ```{r create EDDs}
 # Create EDDs and store in environment
 edds <- format_edd_ccal(ccal_file_paths = c(here("data/raw/ROMN_101823.xlsx"),
-                     here("data/raw/ROMN_102920.xlsx"),
-                     here("data/raw/ROMN_081021.xlsx"),
-                     here("data/raw/ROMN_102221.xlsx"),
-                     here("data/raw/ROMN_100620.xlsx")),
-                   db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
-                   pre_2020 = FALSE)
+                                            here("data/raw/ROMN_102920.xlsx"),
+                                            here("data/raw/ROMN_081021.xlsx"),
+                                            here("data/raw/ROMN_102221.xlsx"),
+                                            here("data/raw/ROMN_100620.xlsx")),
+                       db_file_path = here("data/databases/SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb"),
+                       pre_2020 = FALSE)
 
 # Write the EDD to file
-# write_data(all_data = edds,
+# write_ccal(all_data = edds,
 #            format = "xlsx",
 #            destination_folder = here("data/output"),
 #            overwrite = TRUE,
@@ -277,7 +272,7 @@ edds <- format_edd_ccal(ccal_file_paths = c(here("data/raw/ROMN_101823.xlsx"),
 
 Here, we create a single table for each EDD that contains enough information to understand the results of the QC process without inspecting the full EDD across multiple tables.
 Then we filter for any results that have comments from CCAL that require manual review.
-If we were actually creating and submitting this EDD, the ecologist would need to review the comments in the Source_Flags column to determine whether additional flags are needed. 
+If we were actually creating and submitting this EDD, the ecologist would need to review the comments in the Result_Comments column to determine whether additional flags are needed. 
 For example, we might apply the JCW flag to the observations with broken bottles mentioned in ROMN_101823.xlsx.
 
 ```{r}
@@ -287,7 +282,7 @@ edd_snapshots <- lapply(edds, function(edd) {
     left_join(edd$Activities, by = "Activity_ID") %>%
     select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, 
            Filtered_Fraction, Result_Text, Result_Detection_Condition, Result_Qualifier, 
-           Method_Detection_Limit, Lower_Quantification_Limit, Source_Flags, Result_Comment)
+           Method_Detection_Limit, Lower_Quantification_Limit, Result_Comment)
 })
 
 names(edd_snapshots) <- names(edds)
@@ -299,10 +294,10 @@ names(edd_snapshots) <- names(edds)
 #                   paste0(str_extract(names(edd_snapshots)[[i]], "^.*(?=\\.)"), "_edd_snapshot.xlsx")))
 # })
 
-# The ecologist will manually apply flags based on Source_Flags
+# The ecologist will manually apply flags based on Result_Comment
 lapply(edd_snapshots, function(snapshot) {
   snapshot %>%
-    filter(!is.na(Source_Flags))
+    filter(str_detect(Result_Comment, "Note from lab"))
 })
 ```
 
@@ -310,9 +305,9 @@ And here are any textual flags from CCAL that have not automatically been matche
 
 ```{r}
 # Eventually, the ecologist will manually apply flags based on these descriptions
-# Sometimes these comments have no lab numbers associated with them so I did not attempt to automate their inclusion in Source_Flags
+# Sometimes these comments have no lab numbers associated with them so I did not attempt to automate their inclusion in Result_Comment
 # If output is NA, there are no other comments from CCAL to consider
-getCCALData(c(here("data/raw/ROMN_101823.xlsx"),
+read_ccal(c(here("data/raw/ROMN_101823.xlsx"),
               here("data/raw/ROMN_102920.xlsx"),
               here("data/raw/ROMN_081021.xlsx"),
               here("data/raw/ROMN_102221.xlsx"),
@@ -333,17 +328,17 @@ compare_102920 <- compare_edd(here("data/EDD_examples/ROMN_WQ_EDD_102920_2021041
 Here is my summary of the differences between the EDDs.
 
 - Results:
-    - Result_Qualifier (24): one instance where the old EDD raised the NFNSI flag for orthophosphate but the new EDD raises no flag. It looks like this is because total dissolved phosphorus and total phosphorus were below the MDL and our new process does not make NFNSI or NFNSU comparisons between any analytes below the MDL. All others are the KRMDL flag which we no longer record as a flag.
-    - Result_Type (14): in the new EDD, we set the `Result_Type` to "Estimated" when the "J-R" flag is raised.
-    - Result_Comment (42): we changed the structure of this field
+    - Result_Detection_Condition (9): differences due to using "Present Below Quantification Limit" without the "J-R" flag and at the MDL marking it as "Present Below Quantification Limit" rather than "Not Detected"
+    - Result_Text (7): differences due to censoring data below LQL
+    - **Result_Qualifier** (24 --> 43): one instance where the old EDD raised the NFNSI flag for orthophosphate but the new EDD raises no flag. It looks like this is because total dissolved phosphorus and total phosphorus were below the MDL and our new process does not make NFNSI or NFNSU comparisons between any analytes below the MDL. All others are the KRMDL flag which we no longer record as a flag.
+    - Result_Comment (63): we changed the structure of this field
     - Lower_Quantification_Limit (14): in new code, we always include this instead of sometimes leaving it as NA
     - Analytical_Method_ID (28): these have changed and we are using the current version
     - Analysis_Start_Date (98): new code uses analysis start date rather than activity start date
     - Analysis_Start_Time (98): new code sets to NA rather than saying everything started at midnight 
     - Lab_Reported_Result (21): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
     - Reportable_Result (23): new code always sets this to 'Y'
-    - Source_Flags (42): we changed the structure of this field
-  
+
 # Compare EDD 100620
 
 Here we compare the old and new EDDs produced for another CCAL deliverable from 2020.
@@ -384,18 +379,16 @@ Summary/explanation of the differences:
     - Activity_Start_Date (1): the one difference is the date that I noticed was off earlier. I modified the Activity_ID column in order to get the comparison function to work but I didn't change this column.
 
 - Results:
-    - Result_Detection_Condition (5): these differences are due to the NFNSU flag no longer changing results to Detected Not Quantified
-    - Result_Text (5): these differences are due to the NFNSU flag no longer changing results to NA
-    - Result_Qualifier (83): see code below. All discrepancies are due to differences in methodologies.
-    - Result_Type (39): in new data, we set this to "Estimated" every time we raised the "J-R" flag
-    - Result_Comment (132): we changed the structure of this field
+    - Result_Detection_Condition (38): Differences due to using "Present Below Quantification Limit" without the "J-R" flag and at the MDL, and due to the NFNSU flag no longer changing results to Detected Not Quantified
+    - Result_Text (27): these differences are due to the NFNSU flag no longer changing results to NA, as well as censoring data below the LQL
+    - **Result_Qualifier** (83 --> 136): see code below. All discrepancies are due to differences in methodologies.
+    - Result_Comment (149): we changed the structure of this field
     - Lower_Quantification_Limit (39): in new code, we always include this instead of sometimes leaving it as NA
     - Analytical_Method_ID (100): these have simply changed and we are using the current version
     - Analysis_Start_Date (350): new code uses analysis start date rather than activity start date
     - Analysis_Start_Time (350): new code sets to NA rather than saying everything started at midnight
     - Lab_Reported_Result (59): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
     - Reportable_Result (75): new code always sets this to 'Y'
-    - Source_Flags (14): we changed the structure of this field
 
 In the next two code chunks, we print out two tables that can be used to inspect the differences in **Result_Qualifier** more carefully.
 The differences appear to be due to differences in the way we are assigning NFNSU/NFNSI (our threshold for NFNSU is lower and we don't consider comparisons with inorganic nitrogen), the addition of the SUS flag for replicates, and the removal of the KRMDL flag.
@@ -439,19 +432,17 @@ Summary/explanation of the differences:
     - Activity_Comment (1): the one difference appears to be due to incomplete sentence at the end of the comment in the old EDD.
 
 - Results:
-    - Result_Detection_Condition (9): these differences are due to the NFNSU flag no longer changing results to Detected Not Quantified
-    - Result_Text (9): these differences are due to the NFNSU flag no longer changing results to NA
-    - Result_Qualifier (22): 21 differences because we do not include the KRMDL flag anymore. 1 difference may be due to a mistake on the behalf of CCAL. Their textual comment indicates that an observation is within precision limits when in reality it is not. Also our method is different from theirs for the NFNSU/NFNSI flag anyway.
-    - Result_Type (14): in new data, we set this to "Estimated" every time we raised the "J-R" flag
-    - Result_Comment (47): we changed the structure of this field
+    - Result_Detection_Condition (19): Differences due to using "Present Below Quantification Limit" without the "J-R" flag and at the MDL, and due to the NFNSU flag no longer changing results to Detected Not Quantified
+    - Result_Text (18): these differences are due to the NFNSU flag no longer changing results to NA and censoring values below the LQL
+    - **Result_Qualifier** (22 --> 54): 21 differences because we do not include the KRMDL flag anymore. 1 difference may be due to a mistake on the behalf of CCAL. Their textual comment indicates that an observation is within precision limits when in reality it is not. Also our method is different from theirs for the NFNSU/NFNSI flag anyway.
+    - Result_Comment (76): we changed the structure of this field
     - Lower_Quantification_Limit (14): in new code, we always include this instead of sometimes leaving it as NA
     - Analytical_Method_ID (64): these have simply changed and we are using the current version
     - Analysis_Start_Date (224): new code uses analysis start date rather than activity start date
     - Analysis_Start_Time (224): new code sets to NA rather than saying everything started at midnight
     - Lab_Reported_Result (20): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
     - Reportable_Result (30): new code always sets this to 'Y'
-    - Source_Flags (28): we changed the structure of this field
-    
+
 # Compare EDD 102221
 
 Here we compare the old and new EDDs produced for another CCAL deliverable from 2021.
@@ -494,16 +485,16 @@ Summary/explanation of the differences:
     - Activity_Comment (2): the differences appear to be due to incomplete sentences at the end of the comments in the old EDD.
     
 - Results:
-    - Result_Qualifier (115): see code below. All discrepancies are due to differences in methodologies.
-    - Result_Type (50): in new data, we set this to "Estimated" every time we raised the "J-R" flag
-    - Result_Comment (168): we changed the structure of this field
+    - Result_Detection_Condition (59): Differences due to using "Present Below Quantification Limit" without the "J-R" flag and at the MDL
+    - Result_Text (33): Differences due to censoring data below the LQL
+    - **Result_Qualifier** (115 --> 169): see code below. All discrepancies are due to differences in methodologies.
+    - Result_Comment (178): we changed the structure of this field
     - Lower_Quantification_Limit (50): in new code, we always include this instead of sometimes leaving it as NA
     - Analytical_Method_ID (124): these have changed and we are using the current version
     - Analysis_Start_Date (434): new code uses analysis start date rather than activity start date
     - Analysis_Start_Time (434): new code sets to NA rather than saying everything started at midnight
     - Lab_Reported_Result (74): new code sets this to be exactly the result from the lab rather than using the MDL when a result is not detected and/or imputations
     - Reportable_Result (100): new code always sets this to 'Y'
-    - Source_Flags (14): we changed the structure of this field
 
 In the next two code chunks, we print out two tables that can be used to inspect the differences in **Result_Qualifier** more carefully.
 

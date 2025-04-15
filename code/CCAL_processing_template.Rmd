@@ -67,7 +67,7 @@ edds <- format_edd_ccal(ccal_file_paths = here("data", "raw", ccal_deliverable_f
                                         # TRUE to create one EDD instead of one for each file name
 
 # Write the EDD to file
-# write_data(all_data = edds,
+# write_ccal(all_data = edds,
 #            format = "xlsx",
 #            destination_folder = here("data/output"),
 #            overwrite = TRUE,
@@ -99,7 +99,7 @@ edd_snapshots <- lapply(edds, function(edd) {
     left_join(edd$Activities, by = "Activity_ID") %>%
     select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, 
            Filtered_Fraction, Result_Text, Result_Detection_Condition, Result_Qualifier, 
-           Method_Detection_Limit, Lower_Quantification_Limit, Source_Flags, Result_Comment)
+           Method_Detection_Limit, Lower_Quantification_Limit, Result_Comment)
 })
 
 names(edd_snapshots) <- names(edds)
@@ -114,13 +114,13 @@ names(edd_snapshots) <- names(edds)
 
 There are some comments from the CCAL data that require manual review in order to determine if a flag is needed and where in the flag hierarchy the flag should be placed.
 Below, we filter for any results that have comments that require review.
-Please see the Source_Flags column to review those comments. 
+Please see the Result_Comment column, specifically the parts beginning in "Note from lab" to review those comments. 
 
 ```{r}
-# The ecologist will manually apply flags based on Source_Flags
+# The ecologist will manually apply flags based on Result_Comment
 lapply(edd_snapshots, function(snapshot) {
   snapshot %>%
-    filter(!is.na(Source_Flags))
+    filter(str_detect(Result_Comment, "Note from lab"))
 })
 ```
 
@@ -128,12 +128,12 @@ There may also be textual comments from CCAL that have not been automatically ma
 We display any such comments below for the ecologist to review and possibly use to apply relevant QC flags.
 
 ```{r}
-# Sometimes these comments have no lab numbers associated with them so I did not attempt to automate their inclusion in Source_Flags
+# Sometimes these comments have no lab numbers associated with them so I did not attempt to automate their inclusion in Result_Comment
 # If output is NA, there are no other comments from CCAL to consider
-getCCALData(here("data", "raw", ccal_deliverable_filename)) %>%
+read_ccal(here("data", "raw", ccal_deliverable_filename)) %>%
   lapply(function(deliverable) {
     deliverable$metadata$quest_results_comments
   })
 ```
 
-Finally, the ecologist should apply any other relevant manual QC before submitting the EDD.
+Finally, the ecologist should apply any other relevant manual QC, update the Result_Status, and the EDD should be checked using the EQuIS Data Processor (EDP) before it is submitted.

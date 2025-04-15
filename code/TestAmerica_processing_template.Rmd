@@ -1,0 +1,102 @@
+---
+title: "TestAmerica_processing_template"
+output: html_document
+date: "2025-04-02"
+---
+
+# Purpose
+
+This script serves as a guide for creating an EQuIS Electronic Data Deliverable (EDD) from CSV files provided by Test America.
+To use this template, make a copy of this file in the code directory of the water quality repository, replace the constants in the setup section, and press run!
+
+# Setup
+
+First, we define the constants that our code will refer to throughout this script.
+Specifically, please supply the name of your preferred copy of the database and the relevant Test America deliverable(s) and double check that they are in the appropriate file directories.
+
+```{r constants}
+db_filename <- "SEI_ROMN_WQLab_Processing_20250131_LSmithCopy.accdb" # must be in data/databases
+ta_filenames <- c("280-193566-1_TalStandard.csv",
+                  "280-191667-1_TalStandard.csv") # must be in data/raw. Recommended to supply all CSVs from a given field season
+```
+
+Now we load the packages, functions, and data required to run the processing code.
+All packages except for `imdccal` are available on CRAN and can be downloaded with the `install.packages()` function.
+The `imdccal` package is only available via GitHub, hence the additional steps for installation indicated in the code chunk below.
+
+```{r packages, functions, and data}
+# Load imdccal package
+# Steps for installation are commented out
+# install.packages("remotes")
+# library(remotes) # to facilitate downloading packages from github
+# remotes::install_github("nationalparkservice/imd-ccal") 
+library(imdccal) # nps package for formatting CCAL data
+
+# Load all other packages
+library(tidyverse) # data wrangling
+library(readxl) # reading excel files
+library(lubridate) # working with dates
+library(openxlsx) # exporting excel files
+library(here) # relative file paths
+library(fpCompare) # comparing floating point numbers
+library(DBI) # working with databases
+library(odbc) # working with databases
+
+# Load functions from our script
+source("format_edd.R")
+```
+
+# Creating the EDD
+
+## The automated stuff
+
+Here we run the automated routine for creating the EDD, and we store it on our R environment.
+Optionally, uncomment relevant code below in order to write the EDD to a file.
+See "format_edd.R" for details on the functions called in this code chunk.
+
+```{r}
+# Create EDD and store in environment
+edd <- format_edd_test_america(test_america_file_paths = here(paste0("data/raw/", ta_filenames)), 
+                               db_file_path = here("data", "databases", db_filename))
+
+# Write the EDD from R environment to file
+# The name of the file will be the name of the item in the list (ROMN_TestAmerica_2024) and the suffix (_edd) pasted together
+# write_ccal(all_data = list(ROMN_TestAmerica_2024 = edd),
+#            format = "xlsx",
+#            destination_folder = here("data/output"),
+#            overwrite = TRUE,
+#            suffix = "_edd",
+#            num_tables = 4)
+
+# Alternatively create EDD and write to excel file in one step
+# The name of the file will be "ROMN_TestAmerica", the year of the field season in the deliverables, and "_edd" pasted together
+# write_edd(deliverable_file_paths = here(paste0("data/raw/", ta_filenames)),
+#           db_file_path = here("data", "databases", db_filename),
+#           pre_2020 = FALSE,
+#           lab = "Test America",
+#           format = "xlsx",
+#           destination_folder = here("data/output"),
+#           overwrite = TRUE)
+```
+
+## The manual stuff
+
+To facilitate manual review, we create a single table that contains enough information to understand the results of the QC process without inspecting the full EDD.
+This should reduce the effort associated with navigating the multiple tables and many columns of the EDD.
+Again, you can review this table in your R environment, or you can uncomment the relevant code below to write the snapshot(s) of the EDD(s) to an Excel file.
+
+```{r}
+# Create table that is easier to review
+edd_snapshot <- edd$Results %>%
+    left_join(edd$Activities, by = "Activity_ID") %>%
+    select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, 
+           Filtered_Fraction, Result_Text, Result_Detection_Condition, Result_Qualifier, 
+           Method_Detection_Limit, Lower_Quantification_Limit, Source_Flags, Result_Comment)
+
+# Optionally, write the EDD snapshot to a file
+# The file name can be modified below
+# write.xlsx(edd_snapshot,
+#            here("data", "output", "ROMN_TestAmerica_2024_edd_snapshot.xlsx"))
+```
+
+Finally, the ecologist should review the data, apply any other relevant manual QC, update the Result_Status, and the EDD should be checked using the EQuIS Data Processor (EDP) before it is submitted.
