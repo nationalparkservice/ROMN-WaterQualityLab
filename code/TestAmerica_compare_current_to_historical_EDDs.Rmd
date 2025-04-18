@@ -1,12 +1,13 @@
 ---
-title: "TestAmerica EDD"
+title: "Comparing the Output of Historical and Current Methods for Creating the EQuIS EDD"
 output: html_document
 date: "2025-02-12"
 ---
 
 # Purpose
 
-Drafting the EQuIS EDD creation process for TestAmerica data and comparing current to historical output.
+The purpose of this script is to use our current methods for creating EDDs from Test America deliverables to recreate historical EDDs, and to compare these new versions to what we originally created using the VBA routine in Access.
+Note that the EDDs we recreate here are not fully complete; our streamlined EDD creation routine still requires some degree of manual review.
 
 # Setup
 
@@ -31,6 +32,7 @@ source("test_edd.R")
 # Create 2021 EDD
 
 In this section we create an EDD for the CCAL data from 2021.
+By default we store the EDD in the R environment, but you may uncomment code below to write it to an Excel file instead.
 
 ```{r}
 # Define TA deliverable file names
@@ -69,7 +71,21 @@ edd_2021 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2021,
 #           overwrite = TRUE)
 ```
 
+Here, we create a single table that contains enough information to understand the results of the QC process without inspecting the full 2019 EDD across multiple tables.
+If we were actually creating and submitting this EDD, the ecologist would need to review the lab comments in the Result_Comment column to determine whether additional flags are needed.
+
+```{r}
+# Create data that is easier to review
+edd_2021_snapshot <- edd_2021$Results %>%
+    left_join(edd_2021$Activities, by = "Activity_ID") %>%
+    select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, 
+           Filtered_Fraction, Result_Text, Result_Detection_Condition, Result_Qualifier, 
+           Method_Detection_Limit, Lower_Quantification_Limit, Source_Flags, Result_Comment)
+```
+
 # Test 2021 EDD
+
+In this section, we compare the output from the EDD we just created for our 2021 data to the EDD that was created with our older process.
 
 Note that we manually adjust some of the Activity_ID's for the purposes of comparison.
 These differences occurred due to a discrepancy in the date (possibly adjusted manually during QC).
@@ -118,7 +134,7 @@ Summary/explanation of the differences:
 - Results:
     - Result_Detection_Condition (114): Most of these differences occur because we now set the detection condition to "Present Below Quantification Limit" when a value is less than the LQL, but greater than or equal to the MDL. I verified the final two differences in the TestAmerica deliverable. They reported these as "ND" for "Not Detected", as the new EDD correctly states. The old EDD reported these as "Detected and Quantified".
     - Result_Text (111): We now censor all results less than the LQL
-    - **Result_Qualifier** (273-->456):
+    - Result_Qualifier (456): we overhauled our flagging process
     - Result_Comment (516): we changed the structure of this field
     - Lower_Quantification_Limit (112): These 112 differences are records that are NA in the old EDD but have an LQL in the new EDD. These are all observations that have the J-R flag -- it seems the VBA code set the LQL to NA when J-R was raised (but not sure where that happens). We should always include the LQL when possible.
     - Lab_ID (646): Dean created a new option for us, EUROFINS_DEN, which we will use going forwards
@@ -129,7 +145,7 @@ Summary/explanation of the differences:
 
 # Create 2022 EDD
 
-In this section we create an EDD for the CCAL data from 2019.
+In this section we create an EDD for the CCAL data from 2022.
 
 ```{r}
 # Define TA deliverable file names
@@ -164,7 +180,22 @@ edd_2022 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2022,
 #           overwrite = TRUE)
 ```
 
+Also see the EDD snapshot for easier manual review.
+
+```{r}
+edd_2022_snapshot <- edd_2022$Results %>%
+    left_join(edd_2022$Activities, by = "Activity_ID") %>%
+    select(Activity_ID, Lab_Batch_ID, Activity_Type, Result_Type, Characteristic_Name, 
+           Filtered_Fraction, Result_Text, Result_Detection_Condition, Result_Qualifier, 
+           Method_Detection_Limit, Lower_Quantification_Limit, Source_Flags, Result_Comment)
+```
+
 # Test 2022 EDD
+
+In this section, we compare the output from the EDD we just created for our 2022 data to the EDD that was created with our older process.
+
+Note that we manually adjust some of the Activity_ID's for the purposes of comparison.
+These differences occurred due to a discrepancy in the date (possibly adjusted manually during QC).
 
 ```{r}
 comparison_2022 <- compare_edd(edd_old_file_path <- here('data/EDD_examples/ROMN_WQ_EDD_20230309_PostEDP.xlsx'),
@@ -192,7 +223,7 @@ Summary/explanation of the differences:
 - Results:
     - Result_Detection_Condition (127): Most of these differences occur because we now set the detection condition to "Present Below Quantification Limit" when a value is less than the LQL, but greater than or equal to the MDL. There is one observation which the old EDD reported these as "Detected and Quantified" but is actually a non-detect from the lab
     - Result_Text (127): we now censor all results less than the LQL
-    - **Result_Qualifier** (298 --> 432):
+    - Result_Qualifier (432): we overhauled our flagging process
     - Result_Comment (486): we changed the structure of this field
     - Lower_Quantification_Limit (129): These differences are records that are NA in the old EDD but have an LQL in the new EDD. These are all observations that have the J-R flag -- it seems the VBA code set the LQL to NA when J-R was raised (but not sure where that happens). We should always include the LQL when possible.
     - Lab_ID (608): Dean created a new option for us, EUROFINS_DEN, which we will use going forwards
@@ -205,7 +236,7 @@ Summary/explanation of the differences:
 
 In this section we create an EDD for the CCAL data from 2019.
 
-NOT WORKING!
+THIS IS NOT WORKING!
 It seems that analogous dissolved vs total fractions were not always collected or have somehow been lost...
 
 ```{r}
@@ -254,8 +285,9 @@ edd_2019 <- format_edd_test_america(test_america_file_paths = ta_filepaths_2019,
 #           overwrite = TRUE)
 ```
 
-
 # Test 2019 EDD
+
+This also won't work anymore but I was drafting it before I implemented the tot_vs_dissolved() function...
 
 ```{r}
 comparison_2019 <- compare_edd(edd_old_file_path <- here('data/EDD_examples/ROMN_WQ_EDD_20200205.xlsx'),
@@ -295,8 +327,6 @@ comparison_2019 <- compare_edd(edd_old_file_path <- here('data/EDD_examples/ROMN
                                                                                TRUE ~ Activity_ID
                                                                                ))))
 ```
-
-where did this come from...?
 
 Latitude 3 
 Longitude 4 

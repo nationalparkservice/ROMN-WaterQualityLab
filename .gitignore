@@ -1,5 +1,4 @@
 data/
-tests/test-data/
 *.csv
 *.xlsx
 *.accdb
@@ -7,3 +6,9 @@ tests/test-data/
 .Rhistory
 .RData
 .Ruserdata
+!tests/test-data/activities.csv
+!tests/test-data/results_attach_ta_flags.csv
+!tests/test-data/results_blanks.csv
+!tests/test-data/results_replicates_ccal.csv
+!tests/test-data/results_replicates_test_america.csv
+!tests/test-data/results_tot_vs_dissolved.csv

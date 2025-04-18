@@ -1,0 +1,14 @@
+Activity_ID,Activity_Type,Additional_Location_Info,Medium
+replicates_ccal_0,Sample-Routine,id01,Water
+replicates_ccal_1,Quality Control Sample-Field Replicate,id01_FD_W,Water
+replicates_ta_water_0,Sample-Routine,id02,Water
+replicates_ta_water_1,Sample-Routine,id02,Water
+replicates_ta_sediment_0,Sample-Routine,id02,Sediment
+replicates_ta_water_2,Quality Control Sample-Field Replicate,id02_FD_W,Water
+replicates_ta_water_3,Quality Control Sample-Field Replicate,id02_FD_W,Water
+replicates_ta_sediment_1,Quality Control Sample-Field Replicate,id02_FD_W,Sediment
+blanks_0,Sample-Routine,id03,Water
+blanks_1,Quality Control Sample-Field Blank,id03_FB_W,Water
+tot_vs_dissolved_noflag_0,Sample-Routine,id04,Water
+tot_vs_dissolved_at_least_lql_0,Sample-Routine,id05,Water
+tot_vs_dissolved_below_lql_0,Sample-Routine,id06,Water

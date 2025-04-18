@@ -166,14 +166,6 @@ create_locations_table <- function(activities_or_results, dbo) {
 #'
 #' @return A fully formatted EQuIS deliverable ready for the ecologist's manual review.
 #' Specifically, this function returns a list of deliverables, each of which is a list of the Projects, Locations, Activities, and Results tables.
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' edd_2019 <- format_edd_ccal(ccal_file_paths = here("data/ROMN_103119.xlsx"),
-#'                             db_file_path = here("data/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
-#'                             pre_2020 = here("edd_examples/ROMN_SEI_in_EQuIS.xlsx"))
-#' }
 format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE, concat = FALSE){
   
   # Load database tables
@@ -435,7 +427,7 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE, con
 
 #' Function for formatting our EDD for TestAmerica.
 #'
-#' @param test_america_file_paths Path to .csv files delivered by Test America Use a character vector to specify multiple files.
+#' @param test_america_file_paths Path to .csv files delivered by Test America. Use a character vector to specify multiple files.
 #' @param db_file_path File path to a copy of the SEI water quality lab processing database.
 #' @param pre_2020 By default set to false. If you are using data from before 2020, instead set this 
 #' to a file path to ROMN_SEI_in_EQuIS.xlsx, which includes a crosswalk between EventName and SampleNumber.
@@ -578,8 +570,6 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
     mutate(Characteristic_Name = if_else(Analyte == "Percent Moisture", "Moisture content", Analyte),
            Method_Speciation = NA,
            Filtered_Fraction = if_else(`Prep Type` == "Total/NA", "Total", `Prep Type`)) %>%
-    # left_join(dbo$flags %>% select(-Flag),
-    #           by = join_by(Flag == Flag_TestAmerica)) %>%
     left_join(dbo$units,
               by = join_by(Unit == ResultValueUnits,
                            Medium == Medium,
@@ -692,7 +682,7 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
            Taxonomist_Accreditation_Authority_Name = NA,
            Result_File_Name = NA,
            Reportable_Result = "Y",
-           Source_Flags = Flag, #CHECK
+           Source_Flags = Flag, 
            Logger_Standard_Difference = NA,
            Logger_Percent_Error = NA,
            Analytical_Method_ID_Context = NA,
@@ -833,9 +823,9 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
 #' Use a character vector to specify multiple files.
 #' @inheritParams openxlsx::write.xlsx
 #' @param db_file_path File path to a copy of the SEI water quality lab processing database.
+#' @param lab The name of the lab that we are loading tables for. Valid entries are "CCAL" and "Test America".
 #' @param pre_2020 By default set to false. If you are using data from before 2020, instead set this 
 #' to a file path to ROMN_SEI_in_EQuIS.xlsx, which includes a crosswalk between EventName and SampleNumber.
-#' @param lab The name of the lab that we are loading tables for. Valid entries are "CCAL" and "Test America".
 #' @param format File format to export EDD to - either "xlsx" or "csv".
 #' @param destination_folder Folder to save the data in. Defaults to current working directory. Folder must already exist.
 #' @param qualifiers Table with flags and their meanings. By default, uses the version in the imdccal package. User-defined versions must have the same columns.
@@ -845,18 +835,7 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
 #' If only one file path is supplied to the file_paths argument, this parameter does not affect the output.
 #'
 #' @return Invisibly returns a list containing the data that were written to file.
-#' @export
-#'
-#' @examples
-#' \dontrun{
-#' write_edd(ccal_file_paths = here("data/ROMN_103119.xlsx"),
-#'           db_file_path = here("data/SEI_ROMN_WQLab_Processing_OSU_2023_20240703_LSmith.accdb"),
-#'           pre_2020 = here("edd_examples/ROMN_SEI_in_EQuIS.xlsx"),
-#'           format = "xlsx",
-#'           destination_folder = here("edd_output"),
-#'           overwrite = TRUE)
-#' }
-write_edd <- function(deliverable_file_paths, db_file_path, pre_2020, lab, format = c("xlsx", "csv"), destination_folder = "./", 
+write_edd <- function(deliverable_file_paths, db_file_path, lab, pre_2020 = FALSE, format = c("xlsx", "csv"), destination_folder = "./", 
                       overwrite = FALSE, qualifiers = imdccal::equis_qualifiers, concat = FALSE) {
   format <- match.arg(format)
   destination_folder <- normalizePath(destination_folder, winslash = .Platform$file.sep)
@@ -983,7 +962,7 @@ flag_replicates <- function(results, activities, lab, limits = imdccal::detectio
 #' @param results An appropriately formatted results table. Specifically, the following fields are required:
 #' Activity_ID, Characteristic_Name, Filtered_Fraction, Result_Text, Result_Detection_Condition.
 #' @param activities An appropriately formatted activities table. Specifically, the following fields are required:
-#' Activity_ID, Activity_Type, Additional_Location_Info.
+#' Activity_ID, Activity_Type, Additional_Location_Info, Medium.
 #'
 #' @return The results table with the addition of a "Blank_Flag" column of character type which can be further
 #' processed to apply quality control flags and create associated descriptive fields.
@@ -1015,7 +994,7 @@ flag_blanks <- function(results, activities) {
                                     "FBK: Analyte detected in field blank but not quantified as it is less than the Lower Quantification Limit; ",
                                   Result_Detection_Condition_Blank == "Detected And Quantified" & 
                                     Result_Detection_Condition_Reg != "Detected And Quantified" ~ 
-                                    "FBK: Analyte detected and quantified  in field blank but not quantified in environmental sample; ",
+                                    "FBK: Analyte detected and quantified in field blank but not quantified in environmental sample; ",
                                   Result_Detection_Condition_Blank == "Detected And Quantified" & 
                                     Result_Text_Reg < 5*Result_Text_Blank ~
                                     "FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; ",
@@ -1184,6 +1163,16 @@ flag_tot_vs_dissolved <- function(results, activities, dissolved_characteristic_
   return(results)
 }
 
+#' Translate flags provided by Test America into acceptable flags in EQuIS
+#'
+#' @param results An appropriately formatted results table. Specifically, the following fields are required:
+#' Activity_ID, Characteristic_Name, Filtered_Fraction, Source_Flags.
+#' @param ta_flags The tlu_TestAmerica_flags table in the water chemistry lab deliverable processing database. This defines the crosswalk between individual Test America and EQuIS flags.
+#' @param qualifiers Table with flags and their meanings. By default, uses the version in the imdccal package. User-defined versions must have the same columns.
+#'
+#' @returns The results table with the addition of several columns of character type for each possible EQuIS flag resulting from 
+#' flags historically provided by Test America. Throws an error if a new flag is encountered, and requests that the user update the crosswalk accordingly.
+#' These flag columns are further processed to apply quality control flags and create associated descriptive fields in format_edd_test_america().
 attach_ta_flags <- function(results, ta_flags, qualifiers = imdccal::equis_qualifiers) {
   # Filter for rows with a Test America flag
   # Expand so each TA flag is on its own row
@@ -1204,8 +1193,7 @@ attach_ta_flags <- function(results, ta_flags, qualifiers = imdccal::equis_quali
   # Stop process and request the user define the new flag
   if(nrow(undefined_flags) > 0) {
     stop("Undefined flag(s)! Define the translation from Test America flag(s) ", undefined_flags, 
-         " to valid EQuIS flag(s) in the flag crosswalk, incorporate them in the flag hierarchy, then try again") 
-    # give them information as to where that flag crosswalk is stored ???
+         " to valid EQuIS flag(s) in the flag crosswalk (tlu_TestAmerica_flags in the water chemistry processing database), incorporate them in the flag hierarchy, then try again") 
   }
   
   # Expand so each EQuIS flag is on its own row

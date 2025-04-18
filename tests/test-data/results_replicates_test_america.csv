@@ -1,0 +1,13 @@
+Activity_ID,Characteristic_Name,Filtered_Fraction,Result_Text,Result_Detection_Condition,Method_Detection_Limit,Lower_Quantification_Limit,Analysis_Start_Date,Note
+replicates_ta_water_0,Arsenic,Dissolved,92.5,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 15, no flag"
+replicates_ta_water_0,Cadmium,Dissolved,85,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 30, no flag"
+replicates_ta_water_1,Arsenic,Total,125,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 50, flag"
+replicates_ta_water_1,Cadmium,Total,10,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 0, no flag"
+replicates_ta_sediment_0,Arsenic,Total,10,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 40, flag"
+replicates_ta_sediment_0,Cadmium,Total,12,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 18.18, no flag"
+replicates_ta_water_2,Arsenic,Dissolved,107.5,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 15, no flag"
+replicates_ta_water_2,Cadmium,Dissolved,115,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 30, no flag"
+replicates_ta_water_3,Arsenic,Total,75,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 50, flag"
+replicates_ta_water_3,Cadmium,Total,10,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 0, no flag"
+replicates_ta_sediment_1,Arsenic,Total,15,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 40, flag"
+replicates_ta_sediment_1,Cadmium,Total,10,Detected And Quantified,1,10,1/1/2021,"both >= LQL, metal, RPD = 18.18, no flag"

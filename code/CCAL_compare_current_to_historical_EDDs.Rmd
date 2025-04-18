@@ -161,8 +161,8 @@ Below is my summary of the differences between the EDDs.
 
 - Results:
     - Result_Detection_Condition (101): see code below. Most differences occur because we now set the detection condition to "Present Below Quantification Limit" when a value is less than the LQL, but greater than or equal to the MDL. We also no longer change the Result_Detection_Condition to Not Detected when the NFNSU flag is raised. The other two erroneously were set to Not Detected despite concentrations greater than Alkalinity's MDL of 0.2.
-    - Result_Text (119): see code below. All differences are due to different values of alkalinity or the same issues identified with Result_Detection_Conditino. I'm not sure why the old EDD has different alkalinity values as ours appear to match those in the raw data.
-    - **Result_Qualifier** (180 --> 296): see code below. All discrepancies are due to differences in methodologies, mistakes in old EDD or old CCAL deliverable, or the absence of manual assignment of "H" flag in new EDD. 
+    - Result_Text (119): see code below. All differences are due to different values of alkalinity or the same issues identified with Result_Detection_Condition. I'm not sure why the old EDD has different alkalinity values as ours appear to match those in the raw data.
+    - Result_Qualifier (296): see code below. All discrepancies are due to differences in methodologies, mistakes in old EDD or old CCAL deliverable, or the absence of manual assignment of "H" flag in new EDD. 
     - Result_Status (630): in old data, all are "Accepted" rather than "Pre-Cert"
     - Result_Comment (347): we changed the structure of this field
     - Lower_Quantification_Limit (90): in new code, we always include this instead of sometimes leaving it as NA
@@ -330,7 +330,7 @@ Here is my summary of the differences between the EDDs.
 - Results:
     - Result_Detection_Condition (9): differences due to using "Present Below Quantification Limit" without the "J-R" flag and at the MDL marking it as "Present Below Quantification Limit" rather than "Not Detected"
     - Result_Text (7): differences due to censoring data below LQL
-    - **Result_Qualifier** (24 --> 43): one instance where the old EDD raised the NFNSI flag for orthophosphate but the new EDD raises no flag. It looks like this is because total dissolved phosphorus and total phosphorus were below the MDL and our new process does not make NFNSI or NFNSU comparisons between any analytes below the MDL. All others are the KRMDL flag which we no longer record as a flag.
+    - Result_Qualifier (43): we overhauled our flagging process
     - Result_Comment (63): we changed the structure of this field
     - Lower_Quantification_Limit (14): in new code, we always include this instead of sometimes leaving it as NA
     - Analytical_Method_ID (28): these have changed and we are using the current version
@@ -381,7 +381,7 @@ Summary/explanation of the differences:
 - Results:
     - Result_Detection_Condition (38): Differences due to using "Present Below Quantification Limit" without the "J-R" flag and at the MDL, and due to the NFNSU flag no longer changing results to Detected Not Quantified
     - Result_Text (27): these differences are due to the NFNSU flag no longer changing results to NA, as well as censoring data below the LQL
-    - **Result_Qualifier** (83 --> 136): see code below. All discrepancies are due to differences in methodologies.
+    - Result_Qualifier (136): see code below. All discrepancies are due to differences in methodologies.
     - Result_Comment (149): we changed the structure of this field
     - Lower_Quantification_Limit (39): in new code, we always include this instead of sometimes leaving it as NA
     - Analytical_Method_ID (100): these have simply changed and we are using the current version
@@ -434,7 +434,7 @@ Summary/explanation of the differences:
 - Results:
     - Result_Detection_Condition (19): Differences due to using "Present Below Quantification Limit" without the "J-R" flag and at the MDL, and due to the NFNSU flag no longer changing results to Detected Not Quantified
     - Result_Text (18): these differences are due to the NFNSU flag no longer changing results to NA and censoring values below the LQL
-    - **Result_Qualifier** (22 --> 54): 21 differences because we do not include the KRMDL flag anymore. 1 difference may be due to a mistake on the behalf of CCAL. Their textual comment indicates that an observation is within precision limits when in reality it is not. Also our method is different from theirs for the NFNSU/NFNSI flag anyway.
+    - Result_Qualifier (54): we overhauled our flagging process
     - Result_Comment (76): we changed the structure of this field
     - Lower_Quantification_Limit (14): in new code, we always include this instead of sometimes leaving it as NA
     - Analytical_Method_ID (64): these have simply changed and we are using the current version
@@ -487,7 +487,7 @@ Summary/explanation of the differences:
 - Results:
     - Result_Detection_Condition (59): Differences due to using "Present Below Quantification Limit" without the "J-R" flag and at the MDL
     - Result_Text (33): Differences due to censoring data below the LQL
-    - **Result_Qualifier** (115 --> 169): see code below. All discrepancies are due to differences in methodologies.
+    - Result_Qualifier (169): see code below. All discrepancies are due to differences in methodologies.
     - Result_Comment (178): we changed the structure of this field
     - Lower_Quantification_Limit (50): in new code, we always include this instead of sometimes leaving it as NA
     - Analytical_Method_ID (124): these have changed and we are using the current version

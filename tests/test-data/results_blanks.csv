@@ -1,0 +1,29 @@
+Activity_ID,Characteristic_Name,Filtered_Fraction,Result_Text,Result_Detection_Condition,Method_Detection_Limit,Lower_Quantification_limit,Analysis_Start_Date,Note
+blanks_0,"Alkalinity, Carbonate as CaCO3",Total,100,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected in field blank but not quantified as it is less than the Lower Quantification Limit; 
+blanks_1,"Alkalinity, Carbonate as CaCO3",Total,,Present Below Quantification Limit,1,2,1/1/2021,FBK: Analyte detected in field blank but not quantified as it is less than the Lower Quantification Limit; 
+blanks_0,"Carbon, organic",Dissolved,,Not Detected,1,2,1/1/2021,FBK: Analyte detected in field blank but not quantified as it is less than the Lower Quantification Limit; 
+blanks_1,"Carbon, organic",Dissolved,,Present Below Quantification Limit,1,2,1/1/2021,FBK: Analyte detected in field blank but not quantified as it is less than the Lower Quantification Limit; 
+blanks_0,Chloride,Dissolved,,Not Detected,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank but not quantified in environmental sample; 
+blanks_1,Chloride,Dissolved,2,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank but not quantified in environmental sample; 
+blanks_0,Nitrogen,Dissolved,,Present Below Quantification Limit,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank but not quantified in environmental sample; 
+blanks_1,Nitrogen,Dissolved,3,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank but not quantified in environmental sample; 
+blanks_0,Nitrogen,Total,2,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; 
+blanks_1,Nitrogen,Total,10,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; 
+blanks_0,"Nitrogen, Ammonia (NH3) as N",Dissolved,10,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; 
+blanks_1,"Nitrogen, Ammonia (NH3) as N",Dissolved,10,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; 
+blanks_0,"Nitrogen, Nitrate (NO3) as NO3",Dissolved,30,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; 
+blanks_1,"Nitrogen, Nitrate (NO3) as NO3",Dissolved,10,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; 
+blanks_0,"Nitrogen, Nitrite (NO2) + Nitrate (NO3) as N",Dissolved,49,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; 
+blanks_1,"Nitrogen, Nitrite (NO2) + Nitrate (NO3) as N",Dissolved,10,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration less than five times the field blank's concentration; 
+blanks_0,Phosphorus,Dissolved,50,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration at least 5 times the field blank's concentration; 
+blanks_1,Phosphorus,Dissolved,10,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration at least 5 times the field blank's concentration; 
+blanks_0,Phosphorus,Total,60,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration at least 5 times the field blank's concentration; 
+blanks_1,Phosphorus,Total,10,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration at least 5 times the field blank's concentration; 
+blanks_0,"Phosphorus, phosphate (PO4) as P",Dissolved,1000,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration at least 5 times the field blank's concentration; 
+blanks_1,"Phosphorus, phosphate (PO4) as P",Dissolved,10,Detected And Quantified,1,2,1/1/2021,FBK: Analyte detected and quantified in field blank. Environmental sample analyte concentration at least 5 times the field blank's concentration; 
+blanks_0,Sodium,Dissolved,,Not Detected,1,2,1/1/2021,
+blanks_1,Sodium,Dissolved,,Not Detected,1,2,1/1/2021,
+blanks_0,"Solids, Suspended (TSS)",Total,,Present Below Quantification Limit,1,2,1/1/2021,
+blanks_1,"Solids, Suspended (TSS)",Total,,Not Detected,1,2,1/1/2021,
+blanks_0,"Sulfur, sulfate (SO4) as SO4",Dissolved,2.5,Detected And Quantified,1,2,1/1/2021,
+blanks_1,"Sulfur, sulfate (SO4) as SO4",Dissolved,,Not Detected,1,2,1/1/2021,

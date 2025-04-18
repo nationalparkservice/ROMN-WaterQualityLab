@@ -1,0 +1,20 @@
+Activity_ID,Characteristic_Name,Filtered_Fraction,Source_Flags,Note
+activity_0,Analyte_1,Total,4,"4: MS, MSD: The analyte present in the original sample is greater than 4 times the matrix spike concentration; therefore, control limits are not applicable;"
+activity_0,Analyte_1,Dissolved,*,""": LCS or LCSD is outside acceptance limits.;"
+activity_0,Analyte_2,Total,*+,""": LCS or LCSD is outside acceptance limits.; HIB: Likely Biased High;"
+activity_0,Analyte_2,Dissolved,^,"IQCOL: ICV,CCV,ICB,CCB, ISA, ISB, CRI, CRA, DLCK or MRL standard: Instrument related QC is outside acceptance limits;"
+activity_0,Analyte_3,Total,^+,HIB: Likely Biased High;
+activity_0,Analyte_3,Dissolved,^1+,HICC: Initial calibration criteria not met – high;
+activity_0,Analyte_4,Total,^6+,HIB: Likely Biased High;
+activity_0,Analyte_4,Dissolved,B,"FBK: According to lab, analyte detected in lab method blank; "
+activity_0,Analyte_5,Total,F1,SDROL: MS and/or MSD Recovery is outside acceptance limits;
+activity_0,Analyte_5,Dissolved,F2,SD%EL: MS/MSD RPD exceeds control limits;
+activity_0,Analyte_6,Total,F4,SD%SS: MS/MSD RPD exceeds control limits due to sample size difference. (TestAmerica Laboratory with a qualifier code of 'F4');
+activity_0,Analyte_6,Dissolved,H,H: Holding time exceeded:;
+activity_0,Analyte_7,Total,H3,H: Holding time exceeded:;
+activity_0,Analyte_7,Dissolved,J,
+activity_1,Analyte_1,Total,4 *,"4: MS, MSD: The analyte present in the original sample is greater than 4 times the matrix spike concentration; therefore, control limits are not applicable; "": LCS or LCSD is outside acceptance limits.;"
+activity_1,Analyte_1,Dissolved,* ^,""": LCS or LCSD is outside acceptance limits.; IQCOL: ICV,CCV,ICB,CCB, ISA, ISB, CRI, CRA, DLCK or MRL standard: Instrument related QC is outside acceptance limits;"
+activity_1,Analyte_2,Total,*+ H,""": LCS or LCSD is outside acceptance limits.; HIB: Likely Biased High; H: Holding time exceeded:;"
+activity_1,Analyte_2,Dissolved,^ ^+ ^1+,"HIB: Likely Biased High; IQCOL: ICV,CCV,ICB,CCB, ISA, ISB, CRI, CRA, DLCK or MRL standard: Instrument related QC is outside acceptance limits; HICC: Initial calibration criteria not met – high;"
+activity_1,Analyte_3,Total,^6+ B F1 F2 F4 H H3 J,"HIB: Likely Biased High; FBK: According to lab, analyte detected in lab method blank; SDROL: MS and/or MSD Recovery is outside acceptance limits; SD%EL: MS/MSD RPD exceeds control limits; SD%SS: MS/MSD RPD exceeds control limits due to sample size difference. (TestAmerica Laboratory with a qualifier code of 'F4'); H: Holding time exceeded:;"
