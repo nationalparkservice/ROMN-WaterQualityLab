@@ -62,7 +62,8 @@ See "format_edd.R" for details on the functions called in this code chunk.
 # Create EDD and store in environment
 edds <- format_edd_ccal(ccal_file_paths = here("data", "raw", ccal_deliverable_filename),
                         db_file_path = here("data", "databases", db_filename),
-                        pre_2020 = FALSE,
+                        pre_2020 = FALSE, # If you are using data from before 2020, set this to a file path to ROMN_SEI_in_EQuIS.xlsx, 
+                                          # which includes a crosswalk between EventName and SampleNumber.
                         concat = FALSE) # if multiple file paths are supplied, optionally change concat to 
                                         # TRUE to create one EDD instead of one for each file name
 
@@ -77,7 +78,7 @@ edds <- format_edd_ccal(ccal_file_paths = here("data", "raw", ccal_deliverable_f
 # Alternatively create EDD and write to excel file in one step
 # write_edd(deliverable_file_paths = here("data", "raw", ccal_deliverable_filename),
 #           db_file_path = here("data", "databases", db_filename),
-#           pre_2020 = FALSE,
+#           pre_2020 = FALSE, # If you are using data from before 2020, set this to a file path to ROMN_SEI_in_EQuIS.xlsx, which includes a crosswalk between EventName and SampleNumber.
 #           lab = "CCAL",
 #           format = "xlsx", # "csv" is the other option
 #           destination_folder = here("data/output"),

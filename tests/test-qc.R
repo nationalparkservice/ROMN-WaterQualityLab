@@ -59,7 +59,7 @@ test_that("Field dup flagging routine works", {
   expect_equal(test_data_ccal %>%
                  filter(str_detect(Note, "both >= LQL, major")) %>% # filter for relevant observations
                  pull(Dup_Flag), 
-               c("", "", "", "", major_message, major_message))
+               c("", "", "", "", major_message, major_message, major_message, major_message))
   
   # Both results >= LQL, Nutrient
   nutrient_message <- "SUS: Result value is defined as suspect by data owner because replicate samples exceed the 30% relative percent difference permitted for nutrients; "

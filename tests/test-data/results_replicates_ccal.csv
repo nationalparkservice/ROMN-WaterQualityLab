@@ -23,7 +23,7 @@ replicates_ccal_0,Phosphorus,Total,NA,Not Detected,0.002,0.006,2021-01-01T00:00:
 replicates_ccal_1,Phosphorus,Total,NA,Not Detected,0.002,0.006,2021-01-01T00:00:00Z,"both < LQL, both < MDL, no flag"
 replicates_ccal_0,"Phosphorus, phosphate (PO4) as P",Dissolved,NA,Present Below Quantification Limit,0.001,0.003,2021-01-01T00:00:00Z,"both < LQL, both >= MDL, no flag"
 replicates_ccal_1,"Phosphorus, phosphate (PO4) as P",Dissolved,NA,Present Below Quantification Limit,0.001,0.003,2021-01-01T00:00:00Z,"both < LQL, both >= MDL, no flag"
-replicates_ccal_0,"Solids, Suspended (TSS)",Total,NA,Detected And Quantified,2,NA,2021-01-01T00:00:00Z,possible issue check with Jennifer and Abby
-replicates_ccal_1,"Solids, Suspended (TSS)",Total,NA,Detected And Quantified,2,NA,2021-01-01T00:00:00Z,possible issue check with Jennifer and Abby
+replicates_ccal_0,"Solids, Suspended (TSS)",Total,5,Detected And Quantified,2,NA,2021-01-01T00:00:00Z,"both >= LQL, major, RPD = 50, flag"
+replicates_ccal_1,"Solids, Suspended (TSS)",Total,3,Detected And Quantified,2,NA,2021-01-01T00:00:00Z,"both >= LQL, major, RPD = 50, flag"
 replicates_ccal_0,"Sulfur, sulfate (SO4) as SO4",Dissolved,NA,Not Detected,0.01,0.03,2021-01-01T00:00:00Z,"both < LQL, one < MDL, flag"
 replicates_ccal_1,"Sulfur, sulfate (SO4) as SO4",Dissolved,NA,Present Below Quantification Limit,0.01,0.03,2021-01-01T00:00:00Z,"both < LQL, one < MDL, flag"

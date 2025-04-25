@@ -72,7 +72,7 @@ edd <- format_edd_test_america(test_america_file_paths = here(paste0("data/raw/"
 # The name of the file will be "ROMN_TestAmerica", the year of the field season in the deliverables, and "_edd" pasted together
 # write_edd(deliverable_file_paths = here(paste0("data/raw/", ta_filenames)),
 #           db_file_path = here("data", "databases", db_filename),
-#           pre_2020 = FALSE,
+#           pre_2020 = FALSE, # If you are using data from before 2020, set this to a file path to ROMN_SEI_in_EQuIS.xlsx, which includes a crosswalk between EventName and SampleNumber.
 #           lab = "Test America",
 #           format = "xlsx",
 #           destination_folder = here("data/output"),

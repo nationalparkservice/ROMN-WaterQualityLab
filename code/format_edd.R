@@ -96,9 +96,9 @@ create_projects_table <- function(db_file_path) {
 #' @returns The locations table for the EDD.
 create_locations_table <- function(activities_or_results, dbo) {
   activities_or_results %>%
-    mutate(Park_Code = str_extract(Activity_ID, "(?<=_)[:alpha:]*(?=_)"),
-           Location_ID = str_extract(Activity_ID, ".*(?=_\\d{8})"),
-           Name = str_extract(Location_ID, "(?<=_).*")) %>%
+    mutate(Park_Code = str_extract(Activity_ID, "(?<=_)[:alpha:]*(?=_)"), # first instance of a group of letters after and before an underscore
+           Location_ID = str_extract(Activity_ID, ".*(?=_\\d{8})"), # everything before the underscore before the 8 digit date
+           Name = str_extract(Location_ID, "(?<=_).*")) %>% # everything after the first underscore
     select(`#Org_Code`, Park_Code, Location_ID, Name) %>%
     unique() %>%
     left_join(dbo$Site, by = c("Name")) %>%
@@ -190,12 +190,14 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE, con
       x %>%
         rename("#Org_Code" = "project_code") %>%
         mutate(Project_ID = paste(`#Org_Code`, "SEI", sep = "_"),
-               Location_ID = paste(`#Org_Code`, str_extract(remark, "^.*(?=,)"), sep = "_"),
-               remark_date = str_extract(`remark`, "(?<=, ).{0,11}(?= )"),
-               remark_date = if_else(remark_date == "", str_extract(remark, "(?<=, ).*"), remark_date),
+               Location_ID = paste(`#Org_Code`, 
+                                   str_extract(remark, "^.*(?=,)"), # everything before the first comma
+                                   sep = "_"),
+               remark_date = str_extract(`remark`, "(?<=, ).{0,11}(?= )"), # any 0-11 characters between ", " and " "
+               remark_date = if_else(remark_date == "", str_extract(remark, "(?<=, ).*"), remark_date), # deals with different possible format from CCAL
                Activity_Start_Date = format(mdy(remark_date), "%Y%m%d"),
                Activity_ID_wDups = paste(Location_ID, Activity_Start_Date, "C", Medium, sep = "_"),
-               Custody_ID = str_extract(site_id, "\\d{2}[A-Z]{3}\\d{7}")) %>%
+               Custody_ID = str_extract(site_id, "\\d{2}[A-Z]{3}\\d{7}")) %>% # extract bottle number (2 digits, 3 characters, 7 digits)
         select(`#Org_Code`, Project_ID, Location_ID, Activity_ID_wDups, Medium, Activity_Start_Date, Custody_ID) %>%
         unique() %>%
         left_join(dbo$Joined, by = c("Custody_ID" = "SampleNumber")) %>%
@@ -205,7 +207,7 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE, con
                                            "Quality Control Sample-Field Replicate",
                                          str_detect(Additional_Location_Info, "_FB_W$") ~
                                            "Quality Control Sample-Field Blank",
-                                         TRUE ~ "Sample-Routine"),
+                                         TRUE ~ "Sample-Routine"), # the suffixes are how we denote QC samples internally
                Medium_Subdivision = NA,
                Assemblage_Sampled_Name = NA,
                Activity_Start_Time = NA,
@@ -295,12 +297,12 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE, con
                    by = c("Lab_Batch_ID" = "lab_number",
                           "Characteristic_Name" = "Characteristic_Name",
                           "Filtered_Fraction" = "Filtered_Fraction")) %>%
-        mutate(remark_date = str_extract(remark, "(?<=, ).{0,11}(?= )"),
-               remark_date = if_else(remark_date == "", str_extract(remark, "(?<=, ).*"), remark_date),
+        mutate(remark_date = str_extract(remark, "(?<=, ).{0,11}(?= )"), # any 0-11 characters between ", " and " "
+               remark_date = if_else(remark_date == "", str_extract(remark, "(?<=, ).*"), remark_date), # deals with different possible format from CCAL
                remark_date_reformatted = format(mdy(remark_date), "%Y%m%d"),
-               Activity_ID_wDups = paste(`#Org_Code`, str_extract(remark, "^.*(?=,)"), remark_date_reformatted,
-                                         "C", Medium, sep = "_"),
-               Custody_ID = str_extract(site_id, "\\d{2}[A-Z]{3}\\d{7}")) %>%
+               Activity_ID_wDups = paste(`#Org_Code`, str_extract(remark, "^.*(?=,)"), #everything before last ", "
+                                         remark_date_reformatted, "C", Medium, sep = "_"),
+               Custody_ID = str_extract(site_id, "\\d{2}[A-Z]{3}\\d{7}")) %>% # extract bottle number (2 digits, 3 characters, 7 digits)
         inner_join(activities %>% select(Activity_ID_wDups, Custody_ID, Activity_ID),
                    by = c("Activity_ID_wDups", "Custody_ID")) %>%
         select(-Medium) %>%
@@ -325,8 +327,9 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE, con
                                                           "Total")) %>%
         mutate(Result_Qualifier = case_when(Blank_Flag != "" ~ "FBK", 
                                             Dup_Flag != "" ~ "SUS", 
-                                            Tot_vs_Dissolved_Flag != "" ~ "SUS", # SUS
-                                            TRUE ~ NA),
+                                            Tot_vs_Dissolved_Flag != "" ~ "SUS", 
+                                            TRUE ~ NA), # this implements our flag hierarchy by filling Result_Qualifier with the
+                                                        # highest priority flag whose flag column (which we remove to conform to EDD format) isn't blank
                Reportable_Result = "Y") %>%
         mutate(Result_Comment = paste0(if_else(is.na(Result_Comment), "", paste0(Result_Comment, " ")),
                                        Blank_Flag, 
@@ -459,10 +462,12 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
     { if (is.character(pre_2020)) {
       left_join(., dbo$Joined, by = c("Custody_ID" = "SampleNumber"))
     } else{
-      mutate(., Custody_ID_Join = str_extract(`Client Sample ID`, "\\d{2}[A-Z]{3}\\d{7}")) %>%
+      mutate(., Custody_ID_Join = str_extract(`Client Sample ID`, "\\d{2}[A-Z]{3}\\d{7}")) %>% # extract bottle number (2 digits, 3 characters, 7 digits)
       left_join(., dbo$Joined, by = c("Custody_ID_Join" = "SampleNumber"))
     }} %>%
-    mutate(Location_ID = paste(`#Org_Code`, str_extract(EventName, "(?i)[a-z]*_[a-z0-9]*"), sep = "_"),
+    mutate(Location_ID = paste(`#Org_Code`, 
+                               str_extract(EventName, "(?i)[a-z]*_[a-z0-9]*"), # extracts site name from event name
+                               sep = "_"),
            Activity_ID_wDups = paste(Location_ID, Activity_Start_Date, "T", Medium, sep = "_")) %>%
     select(`#Org_Code`, EventName, Project_ID, Location_ID, Activity_ID_wDups, Medium, Activity_Start_Date, Custody_ID, Notes) %>%
     unique() %>%
@@ -472,7 +477,7 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
                                        "Quality Control Sample-Field Replicate",
                                      str_detect(Additional_Location_Info, "_FB_W$") ~
                                        "Quality Control Sample-Field Blank",
-                                     TRUE ~ "Sample-Routine"),
+                                     TRUE ~ "Sample-Routine"), # the suffixes are how we denote QC samples internally
            Medium_Subdivision = NA,
            Assemblage_Sampled_Name = NA,
            Activity_Start_Time = NA,
@@ -560,10 +565,12 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
     { if (is.character(pre_2020)) {
       left_join(., dbo$Joined, by = c("Custody_ID" = "SampleNumber"))
     } else{
-      mutate(., Custody_ID_Join = str_extract(`Client Sample ID`, "\\d{2}[A-Z]{3}\\d{7}")) %>%
+      mutate(., Custody_ID_Join = str_extract(`Client Sample ID`, "\\d{2}[A-Z]{3}\\d{7}")) %>% # extract bottle number (2 digits, 3 characters, 7 digits)
       left_join(., dbo$Joined, by = c("Custody_ID_Join" = "SampleNumber"))
     }} %>%
-    mutate(Location_ID = paste(`#Org_Code`, str_extract(EventName, "(?i)[a-z]*_[a-z0-9]*"), sep = "_"),
+    mutate(Location_ID = paste(`#Org_Code`, 
+                               str_extract(EventName, "(?i)[a-z]*_[a-z0-9]*"), # extracts site name from event name
+                               sep = "_"),
            Activity_ID_wDups = paste(Location_ID, Activity_Start_Date, "T", Medium, sep = "_")) %>%
     inner_join(activities %>% select(Activity_ID_wDups, Custody_ID, Activity_ID),
                by = c("Activity_ID_wDups", "Custody_ID")) %>%
@@ -588,12 +595,12 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
                                                   TRUE ~ `High Limit`),
            Result_Detection_Condition = case_when(Result_Text %<<% Method_Detection_Limit | Lab_Reported_Result == "ND" ~ "Not Detected",
                                                   Result_Text %<<% Lower_Quantification_Limit ~ "Present Below Quantification Limit",
-                                                  TRUE ~ "Detected And Quantified"),
+                                                  TRUE ~ "Detected And Quantified"), # set detection condition according to comparisons between the measurement, MDL, and LQL
            Result_Comment = case_when(Result_Text %<<% Method_Detection_Limit
                                       ~ paste0("Lab reported a value of ", Result_Text, " which was below the MDL;"),
                                       Result_Text %<<% Lower_Quantification_Limit
                                       ~ paste0("Lab reported a value of ", Result_Text, " which was below the LQL;"),
-                                      TRUE ~ NA),
+                                      TRUE ~ NA), # include value in Result_Comment if censored from Result_Text
            Result_Text = if_else(Result_Detection_Condition == "Detected And Quantified", Result_Text, NA),
            Result_Unit = FinalValueUnits,
            Result_Qualifier = NA,
@@ -737,7 +744,8 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
                                         `SD%EL` != "" ~ "SD%EL", 
                                         `SD%SS` != "" ~ "SD%SS",
                                         H != "" ~ "H", 
-                                        TRUE ~ NA),
+                                        TRUE ~ NA), # this implements our flag hierarchy by filling Result_Qualifier with the
+                                                    # highest priority flag whose flag column (which we remove to conform to EDD format) isn't blank
            Reportable_Result = "Y") %>%
     mutate(Result_Comment = paste0(if_else(is.na(Result_Comment), "", paste0(Result_Comment, " ")),
                                    Blank_Flag, 
@@ -923,6 +931,7 @@ flag_replicates <- function(results, activities, lab, limits = imdccal::detectio
   }
   
   # Determine if RPD is less than group specific threshold for flagging purposes
+  # Create various flag comments according to comparisons between the reg and dup
   joined <- joined %>% 
     mutate(Dup_Flag = case_when(Result_Detection_Condition_Reg == "Detected And Quantified" & Result_Detection_Condition_Dup == "Detected And Quantified" &
                                   RPD > 15.0 & Group == "Major" ~ 
@@ -988,7 +997,7 @@ flag_blanks <- function(results, activities) {
                       "Filtered_Fraction", "Medium"),
                suffix = c("_Blank", "_Reg")) # include a helpful suffix
   
-  # Deal with blanks that detected analytes
+  # Create various flag comments for blanks that detected analytes
   joined <- joined %>%
     mutate(Blank_Flag = case_when(Result_Detection_Condition_Blank == "Present Below Quantification Limit" ~
                                     "FBK: Analyte detected in field blank but not quantified as it is less than the Lower Quantification Limit; ",
@@ -1075,12 +1084,12 @@ flag_tot_vs_dissolved <- function(results, activities, dissolved_characteristic_
   
   # Column bind the total to the dissolved
   # We column bind instead of joining due to some analytes (orthophosphate) needing multiple comparisons
-  # Then we raise the flags using a case when to consider different possibilities
   compare <- bind_cols(dissolved %>%
                          rename_with(~ paste0("dissolved_", .x)), 
                        total %>%
                          rename_with(~ paste0("total_", .x)))
   
+  # Create various flag comments depending on comparison between dissolved and total fractions
   compare <- compare %>%
     mutate(Tot_vs_Dissolved_Flag = case_when(dissolved_Result_Text - total_Result_Text > total_Lower_Quantification_Limit ~
                                                paste0("SUS: Result value is defined as suspect by data owner due to comparison of filtered fractions. Dissolved fraction (",
