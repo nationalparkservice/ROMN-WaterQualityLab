@@ -36,7 +36,8 @@ test_that("Field dup flagging routine works", {
   activities <- read_csv(here("tests/test-data/activities.csv"))
   SEI_DB <- DBI::dbConnect(odbc::odbc(), .connection_string = paste0("Driver={Microsoft Access Driver (*.mdb, *.accdb)};Dbq=", 
                                                                      db_file_path))
-  limits <- DBI::dbReadTable(SEI_DB, "tlu_CCAL_limits")
+  limits <- DBI::dbReadTable(SEI_DB, "tlu_CCAL_limits") %>%
+    mutate(Group = if_else(analysis == "Chloride", NA, Group)) # create example where there is no group listed
   units <- DBI::dbReadTable(SEI_DB, "Xwalk_Parameter_SampleFraction_Medium_Unit")
   DBI::dbDisconnect(SEI_DB)
   
@@ -55,7 +56,7 @@ test_that("Field dup flagging routine works", {
                     units)
     
   # Both results >= LQL, Major
-  major_message <- "SUS: Result value is defined as suspect by data owner because replicate samples exceed the 15% relative percent difference permitted for major constituents; "
+  major_message <- "SUS: Result value is defined as suspect by data owner because replicate samples exceed the 15% relative percent difference permitted for analytes that are neither nutrients nor metals; "
   expect_equal(test_data_ccal %>%
                  filter(str_detect(Note, "both >= LQL, major")) %>% # filter for relevant observations
                  pull(Dup_Flag), 
@@ -114,7 +115,8 @@ test_that("Tot vs dissolved flagging routine works", {
   # Read in data
   results <- read_csv(here("tests/test-data/results_tot_vs_dissolved.csv")) %>%
     mutate(Note = if_else(is.na(Note), "", paste0(Note, " ")))
-  activities <- read_csv(here("tests/test-data/activities.csv"))
+  activities <- read_csv(here("tests/test-data/activities.csv")) %>%
+    mutate(Custody_ID = NA)
   
   # Apply tot vs dissolved flagging routine to test data
   test_data <- results %>%

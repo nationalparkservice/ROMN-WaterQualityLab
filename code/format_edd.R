@@ -305,7 +305,7 @@ format_edd_ccal <- function(ccal_file_paths, db_file_path, pre_2020 = FALSE, con
                Custody_ID = str_extract(site_id, "\\d{2}[A-Z]{3}\\d{7}")) %>% # extract bottle number (2 digits, 3 characters, 7 digits)
         inner_join(activities %>% select(Activity_ID_wDups, Custody_ID, Activity_ID),
                    by = c("Activity_ID_wDups", "Custody_ID")) %>%
-        select(-Medium) %>%
+        select(-Medium, -Custody_ID) %>%
         flag_replicates(activities, "CCAL", dbo$limits) %>% 
         flag_blanks(activities) %>%
         flag_tot_vs_dissolved(activities,
@@ -694,7 +694,7 @@ format_edd_test_america <- function(test_america_file_paths, db_file_path, pre_2
            Logger_Percent_Error = NA,
            Analytical_Method_ID_Context = NA,
            Predicted_Result = NA) %>%
-    select(-Medium, -Group) %>%
+    select(-Medium, -Group, -Custody_ID) %>%
     flag_replicates(activities, "Test America", dbo$units) %>%
     flag_blanks(activities) %>%
     flag_tot_vs_dissolved(activities,
@@ -925,17 +925,12 @@ flag_replicates <- function(results, activities, lab, limits = imdccal::detectio
     stop("Invalid lab argument for flag_replicates(). Valid inputs are 'CCAL' and 'Test America'")
   }
   
-  if (NA %in% joined$Group) {
-    stop(paste0("At least one analyte in the deliverable does not have a defined Group.", 
-         " Please define all groups (metal/nutrient/major) in the crosswalk for the relevant lab."))
-  }
-  
   # Determine if RPD is less than group specific threshold for flagging purposes
   # Create various flag comments according to comparisons between the reg and dup
   joined <- joined %>% 
     mutate(Dup_Flag = case_when(Result_Detection_Condition_Reg == "Detected And Quantified" & Result_Detection_Condition_Dup == "Detected And Quantified" &
-                                  RPD > 15.0 & Group == "Major" ~ 
-                                  "SUS: Result value is defined as suspect by data owner because replicate samples exceed the 15% relative percent difference permitted for major constituents; ",
+                                  RPD > 15.0 & Group %notin% c("Metal", "Nutrient") ~ 
+                                  "SUS: Result value is defined as suspect by data owner because replicate samples exceed the 15% relative percent difference permitted for analytes that are neither nutrients nor metals; ",
                                 Result_Detection_Condition_Reg == "Detected And Quantified" & Result_Detection_Condition_Dup == "Detected And Quantified" &
                                   RPD > 30.0 & Group == "Metal" ~ 
                                   "SUS: Result value is defined as suspect by data owner because replicate samples exceed the 30% relative percent difference permitted for metals; ",
@@ -1054,7 +1049,7 @@ flag_tot_vs_dissolved <- function(results, activities, dissolved_characteristic_
   # Join results and activities
   results <- results %>%
     left_join(activities %>% 
-                select(Activity_ID, Medium) %>%
+                select(Activity_ID, Medium, Custody_ID) %>%
                 rename(Medium_in_function = Medium),
               by = "Activity_ID")
   
@@ -1078,8 +1073,40 @@ flag_tot_vs_dissolved <- function(results, activities, dissolved_characteristic_
   
   # Handle error where there is no match between analytes intended to be compared
   if (dim(dissolved)[1] != dim(total)[1]) {
-    stop("Number of 'dissolved' fraction rows does not equal number of corresponding 'total' fraction rows.
-         Check data for completeness and/or revisit the code in the flag_tot_vs_dissolved() function")
+    # Create bottle number that is the same for dissolved and total fractions (Activity_ID can differ)
+    dissolved <- dissolved %>%
+      mutate(Custody_ID = str_extract(Custody_ID, "\\d{2}[A-Z]{3}\\d{7}"))
+    
+    total <- total %>%
+      mutate(Custody_ID = str_extract(Custody_ID, "\\d{2}[A-Z]{3}\\d{7}"))
+    
+    # Identify any combinations of Custody_ID and Characteristic_Name that do not appear in both total and dissolved
+    issues <- symdiff(dissolved %>% select(Custody_ID, Characteristic_Name),
+                      total %>% select(Custody_ID, Characteristic_Name))
+    
+    # Warn the user about these rows
+    inspect_issues <- paste(issues$Custody_ID, issues$Characteristic_Name, sep = ": ")
+    warning <- c("!" = "Number of 'dissolved' fraction rows does not equal number of corresponding 'total' fraction rows.",
+                 "!" = "Removing {inspect_issues} from comparison.",
+                 "i" = "You may want to inspect these observations in your data.")
+    
+    cli::cli_warn(warning)
+
+    # Remove problem rows
+    dissolved <- dissolved %>%
+      anti_join(issues,
+                by = join_by(Characteristic_Name,
+                             Custody_ID))
+    
+    total <- total %>%
+      anti_join(issues,
+                by = join_by(Characteristic_Name,
+                             Custody_ID))
+    
+    if (dim(dissolved)[1] != dim(total)[1]) {
+      stop("Number of 'dissolved' fraction rows STILL does not equal number of corresponding 'total' fraction rows.
+           Please inspect your data and/or your code to troubleshoot this issue.")
+    }
   }
   
   # Column bind the total to the dissolved
@@ -1167,7 +1194,7 @@ flag_tot_vs_dissolved <- function(results, activities, dissolved_characteristic_
                      "Filtered_Fraction" = "Filtered_Fraction",
                      "Medium_in_function" = "Medium")) %>%
     mutate(Tot_vs_Dissolved_Flag = if_else(is.na(Tot_vs_Dissolved_Flag), "", Tot_vs_Dissolved_Flag)) %>%
-    select(-Medium_in_function)
+    select(-Medium_in_function, -Custody_ID)
     
   return(results)
 }
